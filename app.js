@@ -1,7 +1,13 @@
 
 "use strict";
 
-const $ = (id) => document.getElementById(id);
+/* =========================================================
+   MASTERMIND STUDY APP
+   Offline-first study planner
+   Storage: IndexedDB
+   ========================================================= */
+
+const $ = id => document.getElementById(id);
 
 const DB_NAME = "MASTERMINDStudyDB";
 const DB_VERSION = 1;
@@ -14,69 +20,27 @@ const DEFAULTS = {
   pictures: [],
   exams: [],
   sessions: [],
-  settings: { theme: "dark", pinHash: "" }
+  settings: {
+    theme: "dark",
+    pinHash: ""
+  }
 };
 
 let state = structuredClone(DEFAULTS);
-let db;
+let db = null;
+
 let timerInterval = null;
 let remainingSeconds = 1500;
 let timerRunning = false;
-let sessionStartedAt = null;
 let currentSession = null;
-let lockUntil = 0;
+let timerDeadline = null;
+
+/* ---------- General helpers ---------- */
 
 function makeId() {
   return crypto.randomUUID
     ? crypto.randomUUID()
     : Date.now() + "-" + Math.random().toString(36).slice(2);
-}
-
-function openDatabase() {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
-
-    request.onupgradeneeded = () => {
-      const database = request.result;
-      if (!database.objectStoreNames.contains(STORE)) {
-        database.createObjectStore(STORE, { keyPath: "key" });
-      }
-    };
-
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
-}
-
-function readDB(key) {
-  return new Promise((resolve, reject) => {
-    const request = db.transaction(STORE, "readonly")
-      .objectStore(STORE).get(key);
-    request.onsuccess = () => resolve(request.result?.value);
-    request.onerror = () => reject(request.error);
-  });
-}
-
-function writeDB(key, value) {
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(STORE, "readwrite");
-    transaction.objectStore(STORE).put({ key, value });
-    transaction.oncomplete = resolve;
-    transaction.onerror = () => reject(transaction.error);
-  });
-}
-
-function deleteDB(key) {
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(STORE, "readwrite");
-    transaction.objectStore(STORE).delete(key);
-    transaction.oncomplete = resolve;
-    transaction.onerror = () => reject(transaction.error);
-  });
-}
-
-async function saveState() {
-  await writeDB("appState", state);
 }
 
 function notify(message) {
@@ -97,62 +61,269 @@ function dateKey(date = new Date()) {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
+
   return `${year}-${month}-${day}`;
 }
 
 function formatDuration(seconds) {
-  const minutes = Math.floor(seconds / 60);
-  const hours = Math.floor(minutes / 60);
-  const rest = minutes % 60;
+  const totalMinutes = Math.floor(Math.max(0, seconds) / 60);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
 
-  if (hours) return `${hours} ঘণ্টা ${rest} মিনিট`;
-  return `${minutes} মিনিট`;
+  if (hours > 0) {
+    return `${hours} ঘণ্টা ${minutes} মিনিট`;
+  }
+
+  return `${totalMinutes} মিনিট`;
 }
+
+function cleanFilename(value) {
+  return String(value || "mastermind")
+    .replace(/[\\/:*?"<>|]/g, "_")
+    .slice(0, 100) || "mastermind";
+}
+
+function validImageData(value) {
+  return typeof value === "string" &&
+    /^data:image\/(png|jpeg|jpg|webp|gif);base64,/i.test(value);
+}
+
+function escapeMultiline(value) {
+  return safeText(value).replace(/\n/g, "<br>");
+}
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+
+  link.href = url;
+  link.download = filename;
+
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
+}
+
+function normalizeState(incoming) {
+  const defaults = structuredClone(DEFAULTS);
+
+  return {
+    ...defaults,
+    ...incoming,
+    notes: Array.isArray(incoming.notes) ? incoming.notes : [],
+    flashcards: Array.isArray(incoming.flashcards)
+      ? incoming.flashcards : [],
+    pictures: Array.isArray(incoming.pictures)
+      ? incoming.pictures.filter(pic =>
+          pic && typeof pic.id === "string" &&
+          typeof pic.title === "string" &&
+          validImageData(pic.data)
+        )
+      : [],
+    exams: Array.isArray(incoming.exams) ? incoming.exams : [],
+    sessions: Array.isArray(incoming.sessions)
+      ? incoming.sessions : [],
+    settings: {
+      ...defaults.settings,
+      ...(incoming.settings || {})
+    }
+  };
+}
+
+/* ---------- IndexedDB ---------- */
+
+function openDatabase() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
+
+    request.onupgradeneeded = () => {
+      const database = request.result;
+
+      if (!database.objectStoreNames.contains(STORE)) {
+        database.createObjectStore(STORE, { keyPath: "key" });
+      }
+    };
+
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+function readDB(key) {
+  return new Promise((resolve, reject) => {
+    const request = db.transaction(STORE, "readonly")
+      .objectStore(STORE)
+      .get(key);
+
+    request.onsuccess = () => resolve(request.result?.value);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+function writeDB(key, value) {
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE, "readwrite");
+
+    transaction.objectStore(STORE).put({ key, value });
+
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error);
+    transaction.onabort = () => reject(transaction.error);
+  });
+}
+
+function deleteDB(key) {
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE, "readwrite");
+
+    transaction.objectStore(STORE).delete(key);
+
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error);
+  });
+}
+
+async function saveState() {
+  await writeDB("appState", state);
+}
+
+async function saveSafely() {
+  try {
+    await saveState();
+    return true;
+  } catch (error) {
+    console.error("Save failed:", error);
+    notify("ডেটা সংরক্ষণ করা যায়নি। স্টোরেজে জায়গা আছে কি না দেখো।");
+    return false;
+  }
+}
+
+/* ---------- Theme and dashboard ---------- */
 
 function applyTheme() {
   document.body.classList.toggle(
     "light-theme",
     state.settings.theme === "light"
   );
+
   $("themeBtn").textContent =
     state.settings.theme === "light" ? "☀️" : "🌙";
+
+  document.querySelector('meta[name="theme-color"]')
+    ?.setAttribute(
+      "content",
+      state.settings.theme === "light" ? "#f3f6fc" : "#101827"
+    );
 }
 
 function renderDashboard() {
   $("userGreeting").textContent = state.name || "শিক্ষার্থী";
   $("userName").value = state.name || "";
+
   $("notesCount").textContent = state.notes.length;
   $("cardsCount").textContent = state.flashcards.length;
 
   const todaySeconds = state.sessions
-    .filter(item => item.date === dateKey())
-    .reduce((sum, item) => sum + item.seconds, 0);
+    .filter(session => session.date === dateKey())
+    .reduce((sum, session) => sum + Number(session.seconds || 0), 0);
 
   $("todayTime").textContent = formatDuration(todaySeconds);
 }
 
+/* ---------- Notes ---------- */
+
 function renderNotes() {
   const query = $("noteSearch").value.trim().toLowerCase();
+
   const notes = state.notes.filter(note =>
     `${note.title} ${note.subject} ${note.content}`
-      .toLowerCase().includes(query)
+      .toLowerCase()
+      .includes(query)
   );
 
   $("notesList").innerHTML = notes.length
     ? notes.map(note => `
       <article class="item-card">
         <h3>${safeText(note.title)}</h3>
-        <div class="item-meta">${safeText(note.subject || "অন্যান্য")} · ${safeText(note.date)}</div>
-        <p>${safeText(note.content)}</p>
+        <div class="item-meta">
+          ${safeText(note.subject || "অন্যান্য")} · ${safeText(note.date || "")}
+        </div>
+        <p>${escapeMultiline(note.content)}</p>
         <div class="item-actions">
-          <button data-action="edit-note" data-id="${safeText(note.id)}">সম্পাদনা</button>
-          <button data-action="share-note" data-id="${safeText(note.id)}">শেয়ার</button>
-          <button class="delete-btn" data-action="delete-note" data-id="${safeText(note.id)}">মুছুন</button>
+          <button data-action="edit-note" data-id="${safeText(note.id)}">
+            সম্পাদনা
+          </button>
+          <button data-action="share-note" data-id="${safeText(note.id)}">
+            শেয়ার
+          </button>
+          <button class="delete-btn" data-action="delete-note" data-id="${safeText(note.id)}">
+            মুছুন
+          </button>
         </div>
       </article>
     `).join("")
     : '<div class="empty-state">এখনো কোনো নোট নেই। নতুন নোট তৈরি করো।</div>';
 }
+
+$("saveNameBtn").addEventListener("click", async () => {
+  state.name = $("userName").value.trim();
+
+  if (await saveSafely()) {
+    renderDashboard();
+    notify("তোমার নাম সংরক্ষণ করা হয়েছে।");
+  }
+});
+
+$("themeBtn").addEventListener("click", async () => {
+  const previous = state.settings.theme;
+
+  state.settings.theme = previous === "dark" ? "light" : "dark";
+
+  if (await saveSafely()) {
+    applyTheme();
+  } else {
+    state.settings.theme = previous;
+    applyTheme();
+  }
+});
+
+$("saveNoteBtn").addEventListener("click", async () => {
+  const title = $("noteTitle").value.trim();
+  const content = $("noteContent").value.trim();
+  const subject = $("noteSubject").value.trim();
+
+  if (!title || !content) {
+    return notify("নোটের নাম ও লেখা দুটোই পূরণ করো।");
+  }
+
+  const note = {
+    id: makeId(),
+    title,
+    subject,
+    content,
+    date: new Date().toLocaleString("bn-BD")
+  };
+
+  state.notes.unshift(note);
+
+  if (!await saveSafely()) {
+    state.notes = state.notes.filter(item => item.id !== note.id);
+    return;
+  }
+
+  $("noteTitle").value = "";
+  $("noteSubject").value = "";
+  $("noteContent").value = "";
+
+  renderAll();
+  notify("নোট সংরক্ষণ করা হয়েছে।");
+});
+
+$("noteSearch").addEventListener("input", renderNotes);
+
+/* ---------- Flashcards ---------- */
 
 function renderFlashcards() {
   $("flashList").innerHTML = state.flashcards.length
@@ -161,32 +332,129 @@ function renderFlashcards() {
         <h3>❓ ${safeText(card.question)}</h3>
         <details>
           <summary>উত্তর দেখো</summary>
-          <p>${safeText(card.answer)}</p>
+          <p>${escapeMultiline(card.answer)}</p>
         </details>
         <div class="item-actions">
-          <button data-action="edit-flash" data-id="${safeText(card.id)}">সম্পাদনা</button>
-          <button class="delete-btn" data-action="delete-flash" data-id="${safeText(card.id)}">মুছুন</button>
+          <button data-action="edit-flash" data-id="${safeText(card.id)}">
+            সম্পাদনা
+          </button>
+          <button class="delete-btn" data-action="delete-flash" data-id="${safeText(card.id)}">
+            মুছুন
+          </button>
         </div>
       </article>
     `).join("")
     : '<div class="empty-state">এখনো কোনো ফ্ল্যাশকার্ড নেই।</div>';
 }
 
+$("saveFlashBtn").addEventListener("click", async () => {
+  const question = $("flashQuestion").value.trim();
+  const answer = $("flashAnswer").value.trim();
+
+  if (!question || !answer) {
+    return notify("প্রশ্ন ও উত্তর দুটোই লেখো।");
+  }
+
+  const card = { id: makeId(), question, answer };
+  state.flashcards.unshift(card);
+
+  if (!await saveSafely()) {
+    state.flashcards = state.flashcards.filter(item => item.id !== card.id);
+    return;
+  }
+
+  $("flashQuestion").value = "";
+  $("flashAnswer").value = "";
+
+  renderAll();
+  notify("ফ্ল্যাশকার্ড সংরক্ষণ করা হয়েছে।");
+});
+
+/* ---------- Pictures ---------- */
+
 function renderPictures() {
   $("picturesList").innerHTML = state.pictures.length
     ? state.pictures.map(pic => `
       <article class="item-card">
         <h3>${safeText(pic.title)}</h3>
-        <img class="saved-picture" src="${pic.data}" alt="${safeText(pic.title)}">
+        <img
+          class="saved-picture"
+          src="${safeText(pic.data)}"
+          alt="${safeText(pic.title)}"
+          loading="lazy"
+        >
         <div class="item-actions">
-          <button data-action="rename-picture" data-id="${safeText(pic.id)}">নাম পরিবর্তন</button>
-          <button data-action="share-picture" data-id="${safeText(pic.id)}">শেয়ার / ডাউনলোড</button>
-          <button class="delete-btn" data-action="delete-picture" data-id="${safeText(pic.id)}">মুছুন</button>
+          <button data-action="rename-picture" data-id="${safeText(pic.id)}">
+            নাম পরিবর্তন
+          </button>
+          <button data-action="share-picture" data-id="${safeText(pic.id)}">
+            শেয়ার / ডাউনলোড
+          </button>
+          <button data-action="picture-pdf" data-id="${safeText(pic.id)}">
+            PDF তৈরি
+          </button>
+          <button class="delete-btn" data-action="delete-picture" data-id="${safeText(pic.id)}">
+            মুছুন
+          </button>
         </div>
       </article>
     `).join("")
     : '<div class="empty-state">এখনো কোনো ছবি সংরক্ষণ করা হয়নি।</div>';
 }
+
+function readFileAsDataURL(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error);
+
+    reader.readAsDataURL(file);
+  });
+}
+
+$("savePictureBtn").addEventListener("click", async () => {
+  const file = $("pictureFile").files[0];
+  const title = $("pictureTitle").value.trim();
+
+  if (!file) return notify("আগে একটি ছবি নির্বাচন করো।");
+
+  if (!file.type.startsWith("image/")) {
+    return notify("শুধু ছবির ফাইল নির্বাচন করা যাবে।");
+  }
+
+  if (file.size > 8 * 1024 * 1024) {
+    return notify("ছবিটি ৮ MB-এর চেয়ে ছোট করে নির্বাচন করো।");
+  }
+
+  try {
+    const data = await readFileAsDataURL(file);
+
+    const pic = {
+      id: makeId(),
+      title: title || file.name,
+      data
+    };
+
+    state.pictures.unshift(pic);
+
+    if (!await saveSafely()) {
+      state.pictures = state.pictures.filter(item => item.id !== pic.id);
+      return;
+    }
+
+    $("pictureTitle").value = "";
+    $("pictureFile").value = "";
+
+    renderAll();
+    notify("ছবি সংরক্ষণ করা হয়েছে।");
+  } catch (error) {
+    console.error(error);
+    notify("ছবি পড়া যায়নি। আবার চেষ্টা করো।");
+  }
+});
+
+/* ---------- Exams and countdown ---------- */
 
 function renderExams() {
   const exams = [...state.exams].sort(
@@ -205,157 +473,27 @@ function renderExams() {
         const minutes = Math.floor((total % 3600) / 60);
         const seconds = total % 60;
 
-        countdown = `${days} দিন ${hours} ঘণ্টা ${minutes} মিনিট ${seconds} সেকেন্ড`;
+        countdown =
+          `${days} দিন ${hours} ঘণ্টা ${minutes} মিনিট ${seconds} সেকেন্ড`;
       }
 
       return `
         <article class="item-card">
           <h3>${safeText(exam.title)}</h3>
           <p>⏳ ${safeText(countdown)}</p>
-          <div class="item-meta">${safeText(new Date(exam.date).toLocaleString("bn-BD"))}</div>
+          <div class="item-meta">
+            ${safeText(new Date(exam.date).toLocaleString("bn-BD"))}
+          </div>
           <div class="item-actions">
-            <button class="delete-btn" data-action="delete-exam" data-id="${safeText(exam.id)}">মুছুন</button>
+            <button class="delete-btn" data-action="delete-exam" data-id="${safeText(exam.id)}">
+              মুছুন
+            </button>
           </div>
         </article>
       `;
     }).join("")
     : '<div class="empty-state">এখনো কোনো পরীক্ষার রুটিন যোগ করা হয়নি।</div>';
 }
-
-function renderHistory() {
-  const grouped = {};
-
-  for (const session of state.sessions) {
-    const key = `${session.date}|||${session.subject}`;
-    grouped[key] = (grouped[key] || 0) + session.seconds;
-  }
-
-  const entries = Object.entries(grouped).sort(
-    (a, b) => b[0].localeCompare(a[0])
-  );
-
-  $("studyHistory").innerHTML = entries.length
-    ? entries.map(([key, seconds]) => {
-      const [date, subject] = key.split("|||");
-      return `
-        <article class="item-card">
-          <h3>${safeText(subject)}</h3>
-          <p>${safeText(date)} · ${safeText(formatDuration(seconds))}</p>
-        </article>
-      `;
-    }).join("")
-    : '<div class="empty-state">পড়ার সেশন সম্পন্ন হলে এখানে দেখা যাবে।</div>';
-}
-
-function renderAll() {
-  applyTheme();
-  renderDashboard();
-  renderNotes();
-  renderFlashcards();
-  renderPictures();
-  renderExams();
-  renderHistory();
-}
-
-$("saveNameBtn").addEventListener("click", async () => {
-  state.name = $("userName").value.trim();
-  await saveState();
-  renderDashboard();
-  notify("তোমার নাম সংরক্ষণ করা হয়েছে।");
-});
-
-$("themeBtn").addEventListener("click", async () => {
-  state.settings.theme =
-    state.settings.theme === "dark" ? "light" : "dark";
-  await saveState();
-  applyTheme();
-});
-
-$("saveNoteBtn").addEventListener("click", async () => {
-  const title = $("noteTitle").value.trim();
-  const content = $("noteContent").value.trim();
-  const subject = $("noteSubject").value.trim();
-
-  if (!title || !content) {
-    return notify("নোটের নাম ও লেখা দুটোই পূরণ করো।");
-  }
-
-  state.notes.unshift({
-    id: makeId(),
-    title,
-    subject,
-    content,
-    date: new Date().toLocaleString("bn-BD")
-  });
-
-  await saveState();
-
-  $("noteTitle").value = "";
-  $("noteSubject").value = "";
-  $("noteContent").value = "";
-
-  renderAll();
-  notify("নোট সংরক্ষণ করা হয়েছে।");
-});
-
-$("noteSearch").addEventListener("input", renderNotes);
-
-$("saveFlashBtn").addEventListener("click", async () => {
-  const question = $("flashQuestion").value.trim();
-  const answer = $("flashAnswer").value.trim();
-
-  if (!question || !answer) {
-    return notify("প্রশ্ন ও উত্তর দুটোই লেখো।");
-  }
-
-  state.flashcards.unshift({ id: makeId(), question, answer });
-  await saveState();
-
-  $("flashQuestion").value = "";
-  $("flashAnswer").value = "";
-
-  renderAll();
-  notify("ফ্ল্যাশকার্ড সংরক্ষণ করা হয়েছে।");
-});
-
-$("savePictureBtn").addEventListener("click", async () => {
-  const file = $("pictureFile").files[0];
-  const title = $("pictureTitle").value.trim();
-
-  if (!file) return notify("আগে একটি ছবি নির্বাচন করো।");
-  if (!file.type.startsWith("image/")) {
-    return notify("শুধু ছবির ফাইল নির্বাচন করা যাবে।");
-  }
-
-  if (file.size > 8 * 1024 * 1024) {
-    return notify("ছবিটি ৮ MB-এর চেয়ে ছোট করে নির্বাচন করো।");
-  }
-
-  const data = await new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-
-  state.pictures.unshift({
-    id: makeId(),
-    title: title || file.name,
-    data
-  });
-
-  try {
-    await saveState();
-  } catch {
-    state.pictures.shift();
-    return notify("স্টোরেজে জায়গা কম থাকতে পারে। ডেটা Export করে কিছু জায়গা খালি করো।");
-  }
-
-  $("pictureTitle").value = "";
-  $("pictureFile").value = "";
-  renderAll();
-  notify("ছবি সংরক্ষণ করা হয়েছে।");
-});
 
 $("saveExamBtn").addEventListener("click", async () => {
   const title = $("examTitle").value.trim();
@@ -369,8 +507,13 @@ $("saveExamBtn").addEventListener("click", async () => {
     return notify("ভবিষ্যতের তারিখ নির্বাচন করো।");
   }
 
-  state.exams.push({ id: makeId(), title, date });
-  await saveState();
+  const exam = { id: makeId(), title, date };
+  state.exams.push(exam);
+
+  if (!await saveSafely()) {
+    state.exams = state.exams.filter(item => item.id !== exam.id);
+    return;
+  }
 
   $("examTitle").value = "";
   $("examDate").value = "";
@@ -379,111 +522,183 @@ $("saveExamBtn").addEventListener("click", async () => {
   notify("পরীক্ষার রুটিন সংরক্ষণ করা হয়েছে।");
 });
 
+/* ---------- Study history ---------- */
+
+function renderHistory() {
+  const grouped = {};
+
+  for (const session of state.sessions) {
+    const key = `${session.date}|||${session.subject}`;
+    grouped[key] = (grouped[key] || 0) + Number(session.seconds || 0);
+  }
+
+  const entries = Object.entries(grouped).sort(
+    (a, b) => b[0].localeCompare(a[0])
+  );
+
+  $("studyHistory").innerHTML = entries.length
+    ? entries.map(([key, seconds]) => {
+      const [date, subject] = key.split("|||");
+
+      return `
+        <article class="item-card">
+          <h3>${safeText(subject)}</h3>
+          <p>${safeText(date)} · ${safeText(formatDuration(seconds))}</p>
+        </article>
+      `;
+    }).join("")
+    : '<div class="empty-state">পড়ার সেশন সম্পন্ন হলে এখানে দেখা যাবে।</div>';
+}
+
+/* ---------- Focus timer ---------- */
+
 function updateTimerDisplay() {
-  const minutes = Math.floor(remainingSeconds / 60);
-  const seconds = remainingSeconds % 60;
+  const minutes = Math.floor(Math.max(0, remainingSeconds) / 60);
+  const seconds = Math.max(0, remainingSeconds) % 60;
+
   $("timerDisplay").textContent =
     `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
+function selectedMinutes() {
+  const minutes = Number($("focusMinutes").value) || 25;
+  return Math.max(1, Math.min(300, minutes));
+}
+
 function stopTimer() {
-  clearInterval(timerInterval);
-  timerInterval = null;
+  if (timerInterval !== null) {
+    clearInterval(timerInterval);
+    timerInterval = null;
+  }
+
   timerRunning = false;
 }
 
+function refreshTimer() {
+  if (!timerRunning || timerDeadline === null) return;
+
+  remainingSeconds = Math.max(
+    0,
+    Math.ceil((timerDeadline - Date.now()) / 1000)
+  );
+
+  updateTimerDisplay();
+
+  if (remainingSeconds <= 0) {
+    finishSession();
+  }
+}
+
 async function finishSession() {
+  if (!currentSession) {
+    stopTimer();
+    return;
+  }
+
   stopTimer();
+  remainingSeconds = 0;
+  updateTimerDisplay();
 
-  if (currentSession) {
-    const elapsed = Math.max(
-      0,
-      Math.floor((Date.now() - sessionStartedAt) / 1000)
-    );
+  const completedSeconds = currentSession.plannedSeconds;
 
-    const seconds = Math.min(currentSession.plannedSeconds, elapsed);
+  const session = {
+    id: makeId(),
+    subject: currentSession.subject,
+    seconds: completedSeconds,
+    date: dateKey()
+  };
 
-    if (seconds > 0) {
-      state.sessions.push({
-        id: makeId(),
-        subject: currentSession.subject,
-        seconds,
-        date: dateKey()
-      });
+  state.sessions.push(session);
 
-      await saveState();
-    }
+  if (!await saveSafely()) {
+    state.sessions = state.sessions.filter(item => item.id !== session.id);
   }
 
   currentSession = null;
-  sessionStartedAt = null;
-  renderAll();
+  timerDeadline = null;
 
+  renderAll();
   $("timerMessage").textContent = "সেশন শেষ! ভালো কাজ করেছো।";
+
   notify("ফোকাস সেশন শেষ হয়েছে।");
 }
 
 $("focusMinutes").addEventListener("change", () => {
   if (timerRunning) return;
-  const minutes = Math.max(1, Math.min(300, Number($("focusMinutes").value) || 25));
-  $("focusMinutes").value = minutes;
-  remainingSeconds = minutes * 60;
+
+  remainingSeconds = selectedMinutes() * 60;
+  $("focusMinutes").value = selectedMinutes();
+
   updateTimerDisplay();
 });
 
 $("startTimerBtn").addEventListener("click", () => {
   if (timerRunning) return;
 
-  if (remainingSeconds <= 0) {
-    remainingSeconds = Math.max(
-      1,
-      Math.min(300, Number($("focusMinutes").value) || 25)
-    ) * 60;
-  }
-
   if (!currentSession) {
+    remainingSeconds = selectedMinutes() * 60;
+
     currentSession = {
       subject: $("studySubject").value.trim() || "অন্যান্য",
       plannedSeconds: remainingSeconds
     };
-    sessionStartedAt = Date.now();
+  }
+
+  if (remainingSeconds <= 0) {
+    currentSession = null;
+    remainingSeconds = selectedMinutes() * 60;
+
+    currentSession = {
+      subject: $("studySubject").value.trim() || "অন্যান্য",
+      plannedSeconds: remainingSeconds
+    };
   }
 
   timerRunning = true;
+  timerDeadline = Date.now() + remainingSeconds * 1000;
+
   $("timerMessage").textContent = "মনোযোগ দিয়ে পড়তে থাকো!";
 
-  timerInterval = setInterval(async () => {
-    if (remainingSeconds > 0) {
-      remainingSeconds--;
-      updateTimerDisplay();
-    }
+  stopTimerIntervalOnly();
+  timerInterval = setInterval(refreshTimer, 250);
 
-    if (remainingSeconds <= 0) {
-      await finishSession();
-    }
-  }, 1000);
+  updateTimerDisplay();
 });
+
+function stopTimerIntervalOnly() {
+  if (timerInterval !== null) {
+    clearInterval(timerInterval);
+    timerInterval = null;
+  }
+}
 
 $("pauseTimerBtn").addEventListener("click", () => {
   if (!timerRunning) return;
 
+  remainingSeconds = Math.max(
+    0,
+    Math.ceil((timerDeadline - Date.now()) / 1000)
+  );
+
   stopTimer();
+  timerDeadline = null;
+
+  updateTimerDisplay();
   $("timerMessage").textContent = "টাইমার বিরতিতে আছে।";
 });
 
 $("resetTimerBtn").addEventListener("click", () => {
   stopTimer();
   currentSession = null;
-  sessionStartedAt = null;
+  timerDeadline = null;
 
-  remainingSeconds = Math.max(
-    1,
-    Math.min(300, Number($("focusMinutes").value) || 25)
-  ) * 60;
+  remainingSeconds = selectedMinutes() * 60;
 
   updateTimerDisplay();
   $("timerMessage").textContent = "টাইমার রিসেট হয়েছে।";
 });
+
+/* ---------- Share and download ---------- */
 
 async function shareText(title, text) {
   if (navigator.share) {
@@ -499,115 +714,417 @@ async function shareText(title, text) {
     await navigator.clipboard.writeText(`${title}\n\n${text}`);
     notify("লেখা কপি করা হয়েছে।");
   } catch {
-    notify("এই ব্রাউজারে সরাসরি শেয়ার করা যাচ্ছে না।");
+    notify("এই ব্রাউজারে শেয়ার বা কপি করা যায়নি।");
   }
 }
 
 async function sharePicture(pic) {
+  if (!validImageData(pic.data)) {
+    return notify("ছবির ডেটা সঠিক নয়।");
+  }
+
   try {
     const response = await fetch(pic.data);
     const blob = await response.blob();
-    const file = new File([blob], `${pic.title}.png`, {
-      type: blob.type || "image/png"
+
+    const extension = blob.type === "image/png" ? "png" : "jpg";
+    const filename = `${cleanFilename(pic.title)}.${extension}`;
+
+    const file = new File([blob], filename, {
+      type: blob.type || "image/jpeg"
     });
 
-    if (navigator.canShare?.({ files: [file] }) && navigator.share) {
-      await navigator.share({ files: [file], title: pic.title });
-      return;
+    if (navigator.share && navigator.canShare?.({ files: [file] })) {
+      try {
+        await navigator.share({
+          files: [file],
+          title: pic.title
+        });
+        return;
+      } catch (error) {
+        if (error.name === "AbortError") return;
+      }
     }
 
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `${pic.title}.png`;
-    link.click();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-  } catch {
-    notify("ছবিটি শেয়ার করা যায়নি।");
+    downloadBlob(blob, filename);
+  } catch (error) {
+    console.error(error);
+    notify("ছবিটি শেয়ার বা ডাউনলোড করা যায়নি।");
   }
 }
 
-document.addEventListener("click", async event => {
-  const button = event.target.closest("[data-action]");
-  if (!button) return;
+/* ---------- PDF generation: no external library ---------- */
 
-  const { action, id } = button.dataset;
+function bytesFromBase64(base64) {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
 
-  if (action === "delete-note") {
-    if (!confirm("এই নোটটি মুছবে?")) return;
-    state.notes = state.notes.filter(item => item.id !== id);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
   }
 
-  if (action === "edit-note") {
-    const note = state.notes.find(item => item.id === id);
-    if (!note) return;
+  return bytes;
+}
 
-    const title = prompt("নোটের নতুন নাম:", note.title);
-    if (title === null) return;
+function stringBytes(value) {
+  return new TextEncoder().encode(value);
+}
 
-    const content = prompt("নোটের লেখা:", note.content);
-    if (content === null) return;
+async function imageDataToJpeg(dataURL) {
+  const response = await fetch(dataURL);
+  const blob = await response.blob();
+  const bitmap = await createImageBitmap(blob);
 
-    note.title = title.trim() || note.title;
-    note.content = content;
+  const maxDimension = 2000;
+  const scale = Math.min(
+    1,
+    maxDimension / Math.max(bitmap.width, bitmap.height)
+  );
+
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+  canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+
+  const context = canvas.getContext("2d");
+
+  if (!context) {
+    bitmap.close();
+    throw new Error("Canvas unavailable");
   }
 
-  if (action === "share-note") {
-    const note = state.notes.find(item => item.id === id);
-    if (note) {
-      await shareText(note.title, `${note.subject}\n${note.content}`);
+  context.fillStyle = "#ffffff";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+
+  bitmap.close();
+
+  const jpegBlob = await new Promise((resolve, reject) => {
+    canvas.toBlob(
+      result => result ? resolve(result) : reject(new Error("JPEG failed")),
+      "image/jpeg",
+      0.90
+    );
+  });
+
+  return {
+    bytes: new Uint8Array(await jpegBlob.arrayBuffer()),
+    width: canvas.width,
+    height: canvas.height
+  };
+}
+
+function buildImagePdf(image) {
+  const pageWidth = 595.28;
+  const pageHeight = 841.89;
+
+  const scale = Math.min(
+    pageWidth / image.width,
+    pageHeight / image.height
+  );
+
+  const drawWidth = image.width * scale;
+  const drawHeight = image.height * scale;
+  const x = (pageWidth - drawWidth) / 2;
+  const y = (pageHeight - drawHeight) / 2;
+
+  const content = [
+    "q",
+    `${drawWidth.toFixed(3)} 0 0 ${drawHeight.toFixed(3)} ${x.toFixed(3)} ${y.toFixed(3)} cm`,
+    "/Im0 Do",
+    "Q"
+  ].join("\n");
+
+  const chunks = [];
+  let byteLength = 0;
+  const offsets = [0];
+
+  function addBytes(bytes) {
+    chunks.push(bytes);
+    byteLength += bytes.length;
+  }
+
+  function addString(text) {
+    addBytes(stringBytes(text));
+  }
+
+  function addObject(number, contentParts) {
+    offsets[number] = byteLength;
+
+    addString(`${number} 0 obj\n`);
+
+    for (const part of contentParts) {
+      if (typeof part === "string") {
+        addString(part);
+      } else {
+        addBytes(part);
+      }
     }
-    return;
+
+    addString("\nendobj\n");
   }
 
-  if (action === "delete-flash") {
-    if (!confirm("এই ফ্ল্যাশকার্ডটি মুছবে?")) return;
-    state.flashcards = state.flashcards.filter(item => item.id !== id);
+  addString("%PDF-1.4\n");
+
+  addObject(1, [
+    "<< /Type /Catalog /Pages 2 0 R >>"
+  ]);
+
+  addObject(2, [
+    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"
+  ]);
+
+  addObject(3, [
+    `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageWidth} ${pageHeight}] `,
+    "/Resources << /XObject << /Im0 4 0 R >> >> ",
+    "/Contents 5 0 R >>"
+  ]);
+
+  addObject(4, [
+    `<< /Type /XObject /Subtype /Image /Width ${image.width} `,
+    `/Height ${image.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 `,
+    `/Filter /DCTDecode /Length ${image.bytes.length} >>\nstream\n`,
+    image.bytes,
+    "\nendstream"
+  ]);
+
+  const contentBytes = stringBytes(content);
+
+  addObject(5, [
+    `<< /Length ${contentBytes.length} >>\nstream\n`,
+    contentBytes,
+    "\nendstream"
+  ]);
+
+  const xrefOffset = byteLength;
+
+  addString(`xref\n0 ${offsets.length}\n`);
+  addString("0000000000 65535 f \n");
+
+  for (let i = 1; i < offsets.length; i++) {
+    addString(`${String(offsets[i]).padStart(10, "0")} 00000 n \n`);
   }
 
-  if (action === "edit-flash") {
-    const card = state.flashcards.find(item => item.id === id);
-    if (!card) return;
+  addString(
+    `trailer\n<< /Size ${offsets.length} /Root 1 0 R >>\n` +
+    `startxref\n${xrefOffset}\n%%EOF\n`
+  );
 
-    const question = prompt("নতুন প্রশ্ন:", card.question);
-    if (question === null) return;
+  return new Blob(chunks, { type: "application/pdf" });
+}
 
-    const answer = prompt("নতুন উত্তর:", card.answer);
+async function createPdfFromData(data, title) {
+  if (!validImageData(data)) {
+    throw new Error("Invalid image data");
+  }
+
+  const image = await imageDataToJpeg(data);
+  const pdf = buildImagePdf(image);
+
+  downloadBlob(pdf, `${cleanFilename(title)}.pdf`);
+}
+
+$("pdfBtn").addEventListener("click", async () => {
+  const file = $("pictureFile").files[0];
+
+  try {
+    if (file) {
+      if (!file.type.startsWith("image/")) {
+        return notify("একটি ছবির ফাইল নির্বাচন করো।");
+      }
+
+      if (file.size > 12 * 1024 * 1024) {
+        return notify("PDF-এর জন্য ১২ MB-এর ছোট ছবি ব্যবহার করো।");
+      }
+
+      const data = await readFileAsDataURL(file);
+      await createPdfFromData(
+        data,
+        $("pictureTitle").value.trim() || file.name
+      );
+
+      notify("PDF তৈরি হয়েছে।");
+      return;
+    }
+
+    if (!state.pictures.length) {
+      return notify("আগে একটি ছবি নির্বাচন করো অথবা ছবি সংরক্ষণ করো।");
+    }
+
+    const options = state.pictures
+      .map((pic, index) => `${index + 1}. ${pic.title}`)
+      .join("\n");
+
+    const answer = prompt(
+      "কোন সংরক্ষিত ছবির PDF বানাবে? নম্বর লেখো:\n\n" + options,
+      "1"
+    );
+
     if (answer === null) return;
 
-    card.question = question.trim() || card.question;
-    card.answer = answer;
+    const index = Number(answer) - 1;
+    const pic = state.pictures[index];
+
+    if (!pic) {
+      return notify("সঠিক ছবির নম্বর দাও।");
+    }
+
+    await createPdfFromData(pic.data, pic.title);
+    notify("PDF তৈরি হয়েছে।");
+  } catch (error) {
+    console.error("PDF generation failed:", error);
+    notify("PDF তৈরি করা যায়নি। অন্য একটি ছবি দিয়ে চেষ্টা করো।");
   }
-
-  if (action === "rename-picture") {
-    const pic = state.pictures.find(item => item.id === id);
-    if (!pic) return;
-
-    const title = prompt("ছবির নতুন নাম:", pic.title);
-    if (title !== null && title.trim()) pic.title = title.trim();
-  }
-
-  if (action === "share-picture") {
-    const pic = state.pictures.find(item => item.id === id);
-    if (pic) await sharePicture(pic);
-    return;
-  }
-
-  if (action === "delete-picture") {
-    if (!confirm("এই ছবিটি মুছবে?")) return;
-    state.pictures = state.pictures.filter(item => item.id !== id);
-  }
-
-  if (action === "delete-exam") {
-    if (!confirm("এই পরীক্ষার রুটিনটি মুছবে?")) return;
-    state.exams = state.exams.filter(item => item.id !== id);
-  }
-
-  await saveState();
-  renderAll();
 });
 
-$("exportBtn").addEventListener("click", async () => {
+/* ---------- PIN lock ---------- */
+
+async function hashPin(pin) {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(pin)
+  );
+
+  return Array.from(new Uint8Array(digest))
+    .map(byte => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+function askPin(title, text, placeholder = "PIN") {
+  return new Promise(resolve => {
+    const dialog = $("appDialog");
+    const form = dialog.querySelector("form");
+    const input = $("dialogInput");
+    const confirmButton = $("dialogConfirm");
+    const cancelButton = $("dialogCancel");
+
+    $("dialogTitle").textContent = title;
+    $("dialogText").textContent = text;
+
+    input.value = "";
+    input.placeholder = placeholder;
+
+    function cleanup() {
+      form.removeEventListener("submit", onSubmit);
+      cancelButton.removeEventListener("click", onCancel);
+      dialog.removeEventListener("cancel", onCancel);
+      dialog.removeEventListener("close", onClose);
+    }
+
+    function onSubmit(event) {
+      event.preventDefault();
+
+      const value = input.value;
+      cleanup();
+      dialog.close();
+
+      resolve(value);
+    }
+
+    function onCancel(event) {
+      event.preventDefault();
+
+      cleanup();
+
+      if (dialog.open) dialog.close();
+
+      resolve(null);
+    }
+
+    function onClose() {
+      cleanup();
+      resolve(null);
+    }
+
+    form.addEventListener("submit", onSubmit);
+    cancelButton.addEventListener("click", onCancel);
+    dialog.addEventListener("cancel", onCancel);
+    dialog.addEventListener("close", onClose);
+
+    dialog.showModal();
+    input.focus();
+  });
+}
+
+$("lockBtn").addEventListener("click", async () => {
+  try {
+    const existingHash = state.settings.pinHash;
+
+    if (existingHash) {
+      const currentPin = await askPin(
+        "অ্যাপ লক সেটিংস",
+        "পরিবর্তন করতে বর্তমান PIN দাও।"
+      );
+
+      if (currentPin === null) return;
+
+      if (await hashPin(currentPin) !== existingHash) {
+        return notify("PIN সঠিক নয়।");
+      }
+
+      const newPin = await askPin(
+        "নতুন PIN",
+        "নতুন ৪–১২ অক্ষরের PIN দাও। লক বন্ধ করতে ফাঁকা রাখো।"
+      );
+
+      if (newPin === null) return;
+
+      if (newPin === "") {
+        state.settings.pinHash = "";
+      } else {
+        if (newPin.length < 4 || newPin.length > 12) {
+          return notify("PIN অবশ্যই ৪–১২ অক্ষরের হতে হবে।");
+        }
+
+        state.settings.pinHash = await hashPin(newPin);
+      }
+    } else {
+      const pin = await askPin(
+        "অ্যাপ লক চালু",
+        "একটি ৪–১২ অক্ষরের PIN তৈরি করো।"
+      );
+
+      if (pin === null) return;
+
+      if (pin.length < 4 || pin.length > 12) {
+        return notify("PIN অবশ্যই ৪–১২ অক্ষরের হতে হবে।");
+      }
+
+      state.settings.pinHash = await hashPin(pin);
+    }
+
+    if (await saveSafely()) {
+      notify(
+        state.settings.pinHash
+          ? "অ্যাপ লক চালু হয়েছে।"
+          : "অ্যাপ লক বন্ধ হয়েছে।"
+      );
+    }
+  } catch (error) {
+    console.error(error);
+    notify("লক সেটিংস পরিবর্তন করা যায়নি।");
+  }
+});
+
+async function requireUnlock() {
+  if (!state.settings.pinHash) return true;
+
+  while (true) {
+    const pin = await askPin(
+      "MASTERMIND — আনলক",
+      "অ্যাপ ব্যবহার করতে তোমার PIN দাও।"
+    );
+
+    if (pin !== null && await hashPin(pin) === state.settings.pinHash) {
+      return true;
+    }
+
+    notify("PIN সঠিক নয়। অ্যাপ আনলক করতে সঠিক PIN দাও।");
+  }
+}
+
+/* ---------- Data export and import ---------- */
+
+$("exportBtn").addEventListener("click", () => {
   const payload = {
     app: "MASTERMIND-study-app",
     version: 1,
@@ -620,12 +1137,7 @@ $("exportBtn").addEventListener("click", async () => {
     { type: "application/json" }
   );
 
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = "mastermind-study-backup.json";
-  link.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  downloadBlob(blob, "mastermind-study-backup.json");
 });
 
 $("importBtn").addEventListener("click", () => {
@@ -637,6 +1149,10 @@ $("importFile").addEventListener("change", async () => {
   if (!file) return;
 
   try {
+    if (file.size > 50 * 1024 * 1024) {
+      throw new Error("Backup too large");
+    }
+
     const payload = JSON.parse(await file.text());
     const incoming = payload.data;
 
@@ -652,207 +1168,136 @@ $("importFile").addEventListener("change", async () => {
       throw new Error("Invalid backup");
     }
 
-    if (!confirm("বর্তমান ডেটার বদলে ব্যাকআপের ডেটা বসবে। চালিয়ে যাবে?")) {
+    if (!confirm("ব্যাকআপের ডেটা দিয়ে বর্তমান ডেটা প্রতিস্থাপন হবে। চালিয়ে যাবে?")) {
       return;
     }
 
-    state = {
-      ...structuredClone(DEFAULTS),
-      ...incoming,
-      settings: {
-        ...structuredClone(DEFAULTS.settings),
-        ...(incoming.settings || {})
-      }
-    };
+    const previousState = state;
+    state = normalizeState(incoming);
 
-    await saveState();
+    try {
+      await saveState();
+    } catch (error) {
+      state = previousState;
+      throw error;
+    }
+
     renderAll();
     notify("ব্যাকআপ Import সম্পন্ন হয়েছে।");
-  } catch {
-    notify("ব্যাকআপ ফাইলটি সঠিক নয় বা পড়া যায়নি।");
+  } catch (error) {
+    console.error(error);
+    notify("ব্যাকআপ ফাইলটি সঠিক নয়, খুব বড়, অথবা পড়া যায়নি।");
   } finally {
     $("importFile").value = "";
   }
 });
 
-$("pdfBtn").addEventListener("click", async () => {
-  const file = $("pictureFile").files[0];
+/* ---------- Delete all data ---------- */
 
-  if (!file || !file.type.startsWith("image/")) {
-    return notify("প্রথমে ছবির অংশে একটি ছবি নির্বাচন করো।");
+$("deleteAllBtn").addEventListener("click", async () => {
+  if (!confirm(
+    "সব নোট, ছবি, ফ্ল্যাশকার্ড, পরীক্ষার রুটিন ও পড়ার হিসাব মুছে যাবে। আগে ব্যাকআপ নিয়েছো?"
+  )) {
+    return;
   }
 
-  notify("এই ফিচারের জন্য পরবর্তী ধাপে অফলাইন PDF লাইব্রেরি যুক্ত করতে হবে।");
-});
-
-function hashPin(pin) {
-  return crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(pin)
-  ).then(buffer =>
-    Array.from(new Uint8Array(buffer))
-      .map(byte => byte.toString(16).padStart(2, "0"))
-      .join("")
-  );
-}
-
-function askPin(title, text) {
-  return new Promise(resolve => {
-    const dialog = $("appDialog");
-    $("dialogTitle").textContent = title;
-    $("dialogText").textContent = text;
-    $("dialogInput").value = "";
-
-    const input = $("dialogInput");
-    const confirmButton = $("dialogConfirm");
-    const cancelButton = $("dialogCancel");
-
-    const cleanup = () => {
-      confirmButton.removeEventListener("click", onConfirm);
-      cancelButton.removeEventListener("click", onCancel);
-      dialog.removeEventListener("cancel", onCancel);
-    };
-
-    const onConfirm = event => {
-      event.preventDefault();
-      const value = input.value;
-      cleanup();
-      dialog.close();
-      resolve(value);
-    };
-
-    const onCancel = () => {
-      cleanup();
-      resolve(null);
-    };
-
-    confirmButton.addEventListener("click", onConfirm);
-    cancelButton.addEventListener("click", onCancel);
-    dialog.addEventListener("cancel", onCancel);
-
-    dialog.showModal();
-    input.focus();
-  });
-}
-
-$("lockBtn").addEventListener("click", async () => {
-  const existing = state.settings.pinHash;
-
-  if (existing) {
-    const currentPin = await askPin(
-      "অ্যাপ লক",
-      "বর্তমান PIN দাও। লক বন্ধ করতে ফাঁকা PIN ব্যবহার করতে পারো।"
-    );
-
-    if (currentPin === null) return;
-
-    if (await hashPin(currentPin) !== existing) {
-      return notify("PIN সঠিক নয়।");
-    }
-
-    const newPin = await askPin(
-      "নতুন PIN",
-      "নতুন ৪–১২ অক্ষরের PIN দাও। লক বন্ধ করতে ফাঁকা রাখো।"
-    );
-
-    if (newPin === null) return;
-
-    if (newPin === "") {
-      state.settings.pinHash = "";
-    } else {
-      if (newPin.length < 4 || newPin.length > 12) {
-        return notify("PIN অবশ্যই ৪–১২ অক্ষরের হতে হবে।");
-      }
-      state.settings.pinHash = await hashPin(newPin);
-    }
-  } else {
-    const pin = await askPin(
-      "অ্যাপ লক চালু",
-      "একটি ৪–১২ অক্ষরের PIN তৈরি করো।"
-    );
-
-    if (pin === null) return;
-
-    if (pin.length < 4 || pin.length > 12) {
-      return notify("PIN অবশ্যই ৪–১২ অক্ষরের হতে হবে।");
-    }
-
-    state.settings.pinHash = await hashPin(pin);
+  if (!confirm("শেষবার নিশ্চিত হও: সব অ্যাপ ডেটা মুছে ফেলবে?")) {
+    return;
   }
 
-  await saveState();
-  notify(state.settings.pinHash ? "অ্যাপ লক চালু হয়েছে।" : "অ্যাপ লক বন্ধ হয়েছে।");
+  stopTimer();
+  currentSession = null;
+  timerDeadline = null;
+
+  const previousState = state;
+  state = structuredClone(DEFAULTS);
+
+  try {
+    await deleteDB("appState");
+  } catch (error) {
+    state = previousState;
+    console.error(error);
+    return notify("ডেটা মুছে ফেলা যায়নি।");
+  }
+
+  remainingSeconds = 1500;
+  $("focusMinutes").value = 25;
+  $("studySubject").value = "";
+  $("timerMessage").textContent = "মনোযোগ দিয়ে শুরু করো!";
+
+  updateTimerDisplay();
+  renderAll();
+
+  notify("অ্যাপের সব ডেটা মুছে ফেলা হয়েছে।");
 });
+
+/* ---------- Developer button ---------- */
 
 $("developerBtn").addEventListener("click", () => {
   const message = $("developerMessage");
   message.hidden = !message.hidden;
 });
 
-$("deleteAllBtn").addEventListener("click", async () => {
-  if (!confirm("সতর্কতা: সব নোট, ছবি, ফ্ল্যাশকার্ড, রুটিন ও পড়ার হিসাব মুছে যাবে। আগে ডেটা Export করে রেখেছো?")) {
-    return;
-  }
+/* ---------- Render all ---------- */
 
-  if (!confirm("শেষবার নিশ্চিত হও: সব অ্যাপ ডেটা স্থায়ীভাবে মুছে ফেলবে?")) {
-    return;
-  }
+function renderAll() {
+  applyTheme();
+  renderDashboard();
+  renderNotes();
+  renderFlashcards();
+  renderPictures();
+  renderExams();
+  renderHistory();
+}
 
-  stopTimer();
-  currentSession = null;
-  sessionStartedAt = null;
-  state = structuredClone(DEFAULTS);
+/* ---------- Offline support ---------- */
 
-  await deleteDB("appState");
-  renderAll();
+function registerOfflineSupport() {
+  if (!("serviceWorker" in navigator)) return;
 
-  remainingSeconds = 1500;
-  updateTimerDisplay();
+  navigator.serviceWorker.register("./service-worker.js")
+    .catch(error => {
+      console.error("Service Worker registration failed:", error);
+    });
+}
 
-  notify("অ্যাপের সব ডেটা মুছে ফেলা হয়েছে।");
-});
+/* ---------- Start app ---------- */
 
 async function initialize() {
   try {
+    if (!window.indexedDB) {
+      throw new Error("IndexedDB unavailable");
+    }
+
     db = await openDatabase();
 
     const saved = await readDB("appState");
+
     if (saved && typeof saved === "object") {
-      state = {
-        ...structuredClone(DEFAULTS),
-        ...saved,
-        settings: {
-          ...structuredClone(DEFAULTS.settings),
-          ...(saved.settings || {})
-        }
-      };
+      state = normalizeState(saved);
     }
+
+    remainingSeconds = selectedMinutes() * 60;
 
     renderAll();
     updateTimerDisplay();
 
-    if (state.settings.pinHash) {
-      lockUntil = Date.now() + 15000;
-      document.body.inert = true;
+    // Register offline support after the app has loaded.
+    registerOfflineSupport();
 
-      const pin = await askPin(
-        "স্বাগতম",
-        "অ্যাপ আনলক করতে তোমার PIN দাও।"
-      );
-
-      if (pin && await hashPin(pin) === state.settings.pinHash) {
-        document.body.inert = false;
-      } else {
-        document.body.inert = false;
-        notify("PIN সঠিক নয়। অ্যাপ লক সেটিংস থেকে আবার চেষ্টা করো।");
-      }
-    }
+    // A modal dialog blocks the page behind it.
+    // Do not make the body inert: that can block the dialog itself.
+    await requireUnlock();
   } catch (error) {
-    console.error(error);
-    notify("ডেটাবেস চালু করা যায়নি। অনুগ্রহ করে আধুনিক ব্রাউজার ব্যবহার করো।");
+    console.error("Initialization failed:", error);
+
+    notify(
+      "অ্যাপ চালু করা যায়নি। GitHub Pages-এর HTTPS লিংক এবং আধুনিক ব্রাউজার ব্যবহার করো।"
+    );
   }
 }
 
+// Refresh countdown numbers without rebuilding other sections.
 setInterval(() => {
   if (state.exams.length) renderExams();
 }, 1000);
