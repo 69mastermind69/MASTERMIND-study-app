@@ -37,6 +37,7 @@ let timerDeadline = null;
 
 let editingNoteId = null;
 let editingFlashId = null;
+let savingExam = false;
 
 /* ---------- General helpers ---------- */
 
