@@ -35,6 +35,9 @@ let timerRunning = false;
 let currentSession = null;
 let timerDeadline = null;
 
+let editingNoteId = null;
+let editingFlashId = null;
+
 /* ---------- General helpers ---------- */
 
 function makeId() {
@@ -108,6 +111,7 @@ function downloadBlob(blob, filename) {
 
 function normalizeState(incoming) {
   const defaults = structuredClone(DEFAULTS);
+  incoming = incoming && typeof incoming === "object" ? incoming : {};
 
   return {
     ...defaults,
@@ -117,7 +121,8 @@ function normalizeState(incoming) {
       ? incoming.flashcards : [],
     pictures: Array.isArray(incoming.pictures)
       ? incoming.pictures.filter(pic =>
-          pic && typeof pic.id === "string" &&
+          pic &&
+          typeof pic.id === "string" &&
           typeof pic.title === "string" &&
           validImageData(pic.data)
         )
@@ -182,6 +187,7 @@ function deleteDB(key) {
 
     transaction.oncomplete = () => resolve();
     transaction.onerror = () => reject(transaction.error);
+    transaction.onabort = () => reject(transaction.error);
   });
 }
 
@@ -238,7 +244,7 @@ function renderNotes() {
   const query = $("noteSearch").value.trim().toLowerCase();
 
   const notes = state.notes.filter(note =>
-    `${note.title} ${note.subject} ${note.content}`
+    `${note.title || ""} ${note.subject || ""} ${note.content || ""}`
       .toLowerCase()
       .includes(query)
   );
@@ -248,17 +254,18 @@ function renderNotes() {
       <article class="item-card">
         <h3>${safeText(note.title)}</h3>
         <div class="item-meta">
-          ${safeText(note.subject || "অন্যান্য")} · ${safeText(note.date || "")}
+          ${safeText(note.subject || "অন্যান্য")} ·
+          ${safeText(note.updatedAt || note.date || "")}
         </div>
         <p>${escapeMultiline(note.content)}</p>
         <div class="item-actions">
-          <button data-action="edit-note" data-id="${safeText(note.id)}">
+          <button type="button" data-action="edit-note" data-id="${safeText(note.id)}">
             সম্পাদনা
           </button>
-          <button data-action="share-note" data-id="${safeText(note.id)}">
+          <button type="button" data-action="share-note" data-id="${safeText(note.id)}">
             শেয়ার
           </button>
-          <button class="delete-btn" data-action="delete-note" data-id="${safeText(note.id)}">
+          <button type="button" class="delete-btn" data-action="delete-note" data-id="${safeText(note.id)}">
             মুছুন
           </button>
         </div>
@@ -268,11 +275,15 @@ function renderNotes() {
 }
 
 $("saveNameBtn").addEventListener("click", async () => {
+  const previousName = state.name;
   state.name = $("userName").value.trim();
 
   if (await saveSafely()) {
     renderDashboard();
     notify("তোমার নাম সংরক্ষণ করা হয়েছে।");
+  } else {
+    state.name = previousName;
+    renderDashboard();
   }
 });
 
@@ -298,24 +309,47 @@ $("saveNoteBtn").addEventListener("click", async () => {
     return notify("নোটের নাম ও লেখা দুটোই পূরণ করো।");
   }
 
-  const note = {
-    id: makeId(),
-    title,
-    subject,
-    content,
-    date: new Date().toLocaleString("bn-BD")
-  };
+  const previousNotes = structuredClone(state.notes);
 
-  state.notes.unshift(note);
+  if (editingNoteId) {
+    const index = state.notes.findIndex(
+      note => note.id === editingNoteId
+    );
+
+    if (index === -1) {
+      editingNoteId = null;
+      $("saveNoteBtn").textContent = "＋ নোট সংরক্ষণ";
+      return notify("নোটটি খুঁজে পাওয়া যায়নি।");
+    }
+
+    state.notes[index] = {
+      ...state.notes[index],
+      title,
+      subject,
+      content,
+      updatedAt: new Date().toLocaleString("bn-BD")
+    };
+  } else {
+    state.notes.unshift({
+      id: makeId(),
+      title,
+      subject,
+      content,
+      date: new Date().toLocaleString("bn-BD")
+    });
+  }
 
   if (!await saveSafely()) {
-    state.notes = state.notes.filter(item => item.id !== note.id);
+    state.notes = previousNotes;
     return;
   }
+
+  editingNoteId = null;
 
   $("noteTitle").value = "";
   $("noteSubject").value = "";
   $("noteContent").value = "";
+  $("saveNoteBtn").textContent = "＋ নোট সংরক্ষণ";
 
   renderAll();
   notify("নোট সংরক্ষণ করা হয়েছে।");
@@ -335,10 +369,10 @@ function renderFlashcards() {
           <p>${escapeMultiline(card.answer)}</p>
         </details>
         <div class="item-actions">
-          <button data-action="edit-flash" data-id="${safeText(card.id)}">
+          <button type="button" data-action="edit-flash" data-id="${safeText(card.id)}">
             সম্পাদনা
           </button>
-          <button class="delete-btn" data-action="delete-flash" data-id="${safeText(card.id)}">
+          <button type="button" class="delete-btn" data-action="delete-flash" data-id="${safeText(card.id)}">
             মুছুন
           </button>
         </div>
@@ -355,16 +389,42 @@ $("saveFlashBtn").addEventListener("click", async () => {
     return notify("প্রশ্ন ও উত্তর দুটোই লেখো।");
   }
 
-  const card = { id: makeId(), question, answer };
-  state.flashcards.unshift(card);
+  const previousCards = structuredClone(state.flashcards);
+
+  if (editingFlashId) {
+    const index = state.flashcards.findIndex(
+      card => card.id === editingFlashId
+    );
+
+    if (index === -1) {
+      editingFlashId = null;
+      $("saveFlashBtn").textContent = "＋ ফ্ল্যাশকার্ড সংরক্ষণ";
+      return notify("ফ্ল্যাশকার্ডটি খুঁজে পাওয়া যায়নি।");
+    }
+
+    state.flashcards[index] = {
+      ...state.flashcards[index],
+      question,
+      answer
+    };
+  } else {
+    state.flashcards.unshift({
+      id: makeId(),
+      question,
+      answer
+    });
+  }
 
   if (!await saveSafely()) {
-    state.flashcards = state.flashcards.filter(item => item.id !== card.id);
+    state.flashcards = previousCards;
     return;
   }
 
+  editingFlashId = null;
+
   $("flashQuestion").value = "";
   $("flashAnswer").value = "";
+  $("saveFlashBtn").textContent = "＋ ফ্ল্যাশকার্ড সংরক্ষণ";
 
   renderAll();
   notify("ফ্ল্যাশকার্ড সংরক্ষণ করা হয়েছে।");
@@ -384,16 +444,16 @@ function renderPictures() {
           loading="lazy"
         >
         <div class="item-actions">
-          <button data-action="rename-picture" data-id="${safeText(pic.id)}">
+          <button type="button" data-action="rename-picture" data-id="${safeText(pic.id)}">
             নাম পরিবর্তন
           </button>
-          <button data-action="share-picture" data-id="${safeText(pic.id)}">
+          <button type="button" data-action="share-picture" data-id="${safeText(pic.id)}">
             শেয়ার / ডাউনলোড
           </button>
-          <button data-action="picture-pdf" data-id="${safeText(pic.id)}">
+          <button type="button" data-action="picture-pdf" data-id="${safeText(pic.id)}">
             PDF তৈরি
           </button>
-          <button class="delete-btn" data-action="delete-picture" data-id="${safeText(pic.id)}">
+          <button type="button" class="delete-btn" data-action="delete-picture" data-id="${safeText(pic.id)}">
             মুছুন
           </button>
         </div>
@@ -485,7 +545,7 @@ function renderExams() {
             ${safeText(new Date(exam.date).toLocaleString("bn-BD"))}
           </div>
           <div class="item-actions">
-            <button class="delete-btn" data-action="delete-exam" data-id="${safeText(exam.id)}">
+            <button type="button" class="delete-btn" data-action="delete-exam" data-id="${safeText(exam.id)}">
               মুছুন
             </button>
           </div>
@@ -562,7 +622,7 @@ function updateTimerDisplay() {
 
 function selectedMinutes() {
   const minutes = Number($("focusMinutes").value) || 25;
-  return Math.max(1, Math.min(300, minutes));
+  return Math.max(1, Math.min(300, Math.floor(minutes)));
 }
 
 function stopTimer() {
@@ -572,6 +632,13 @@ function stopTimer() {
   }
 
   timerRunning = false;
+}
+
+function stopTimerIntervalOnly() {
+  if (timerInterval !== null) {
+    clearInterval(timerInterval);
+    timerInterval = null;
+  }
 }
 
 function refreshTimer() {
@@ -635,17 +702,7 @@ $("focusMinutes").addEventListener("change", () => {
 $("startTimerBtn").addEventListener("click", () => {
   if (timerRunning) return;
 
-  if (!currentSession) {
-    remainingSeconds = selectedMinutes() * 60;
-
-    currentSession = {
-      subject: $("studySubject").value.trim() || "অন্যান্য",
-      plannedSeconds: remainingSeconds
-    };
-  }
-
-  if (remainingSeconds <= 0) {
-    currentSession = null;
+  if (!currentSession || remainingSeconds <= 0) {
     remainingSeconds = selectedMinutes() * 60;
 
     currentSession = {
@@ -664,13 +721,6 @@ $("startTimerBtn").addEventListener("click", () => {
 
   updateTimerDisplay();
 });
-
-function stopTimerIntervalOnly() {
-  if (timerInterval !== null) {
-    clearInterval(timerInterval);
-    timerInterval = null;
-  }
-}
 
 $("pauseTimerBtn").addEventListener("click", () => {
   if (!timerRunning) return;
@@ -755,17 +805,6 @@ async function sharePicture(pic) {
 
 /* ---------- PDF generation: no external library ---------- */
 
-function bytesFromBase64(base64) {
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-
-  return bytes;
-}
-
 function stringBytes(value) {
   return new TextEncoder().encode(value);
 }
@@ -800,7 +839,9 @@ async function imageDataToJpeg(dataURL) {
 
   const jpegBlob = await new Promise((resolve, reject) => {
     canvas.toBlob(
-      result => result ? resolve(result) : reject(new Error("JPEG failed")),
+      result => result
+        ? resolve(result)
+        : reject(new Error("JPEG failed")),
       "image/jpeg",
       0.90
     );
@@ -847,12 +888,12 @@ function buildImagePdf(image) {
     addBytes(stringBytes(text));
   }
 
-  function addObject(number, contentParts) {
+  function addObject(number, parts) {
     offsets[number] = byteLength;
 
     addString(`${number} 0 obj\n`);
 
-    for (const part of contentParts) {
+    for (const part of parts) {
       if (typeof part === "string") {
         addString(part);
       } else {
@@ -937,6 +978,7 @@ $("pdfBtn").addEventListener("click", async () => {
       }
 
       const data = await readFileAsDataURL(file);
+
       await createPdfFromData(
         data,
         $("pictureTitle").value.trim() || file.name
@@ -994,7 +1036,6 @@ function askPin(title, text, placeholder = "PIN") {
     const dialog = $("appDialog");
     const form = dialog.querySelector("form");
     const input = $("dialogInput");
-    const confirmButton = $("dialogConfirm");
     const cancelButton = $("dialogCancel");
 
     $("dialogTitle").textContent = title;
@@ -1002,6 +1043,19 @@ function askPin(title, text, placeholder = "PIN") {
 
     input.value = "";
     input.placeholder = placeholder;
+
+    let resolved = false;
+
+    function finish(value) {
+      if (resolved) return;
+      resolved = true;
+
+      cleanup();
+
+      if (dialog.open) dialog.close();
+
+      resolve(value);
+    }
 
     function cleanup() {
       form.removeEventListener("submit", onSubmit);
@@ -1012,27 +1066,20 @@ function askPin(title, text, placeholder = "PIN") {
 
     function onSubmit(event) {
       event.preventDefault();
-
-      const value = input.value;
-      cleanup();
-      dialog.close();
-
-      resolve(value);
+      finish(input.value);
     }
 
     function onCancel(event) {
       event.preventDefault();
-
-      cleanup();
-
-      if (dialog.open) dialog.close();
-
-      resolve(null);
+      finish(null);
     }
 
     function onClose() {
-      cleanup();
-      resolve(null);
+      if (!resolved) {
+        resolved = true;
+        cleanup();
+        resolve(null);
+      }
     }
 
     form.addEventListener("submit", onSubmit);
@@ -1182,6 +1229,18 @@ $("importFile").addEventListener("change", async () => {
       throw error;
     }
 
+    editingNoteId = null;
+    editingFlashId = null;
+
+    $("noteTitle").value = "";
+    $("noteSubject").value = "";
+    $("noteContent").value = "";
+    $("flashQuestion").value = "";
+    $("flashAnswer").value = "";
+
+    $("saveNoteBtn").textContent = "＋ নোট সংরক্ষণ";
+    $("saveFlashBtn").textContent = "＋ ফ্ল্যাশকার্ড সংরক্ষণ";
+
     renderAll();
     notify("ব্যাকআপ Import সম্পন্ন হয়েছে।");
   } catch (error) {
@@ -1220,6 +1279,18 @@ $("deleteAllBtn").addEventListener("click", async () => {
     return notify("ডেটা মুছে ফেলা যায়নি।");
   }
 
+  editingNoteId = null;
+  editingFlashId = null;
+
+  $("noteTitle").value = "";
+  $("noteSubject").value = "";
+  $("noteContent").value = "";
+  $("flashQuestion").value = "";
+  $("flashAnswer").value = "";
+
+  $("saveNoteBtn").textContent = "＋ নোট সংরক্ষণ";
+  $("saveFlashBtn").textContent = "＋ ফ্ল্যাশকার্ড সংরক্ষণ";
+
   remainingSeconds = 1500;
   $("focusMinutes").value = 25;
   $("studySubject").value = "";
@@ -1236,6 +1307,199 @@ $("deleteAllBtn").addEventListener("click", async () => {
 $("developerBtn").addEventListener("click", () => {
   const message = $("developerMessage");
   message.hidden = !message.hidden;
+});
+
+/* ---------- Action buttons: Edit/Delete/Share ---------- */
+
+document.addEventListener("click", async event => {
+  const button = event.target.closest("button[data-action]");
+  if (!button) return;
+
+  const action = button.dataset.action;
+  const id = button.dataset.id;
+
+  if (!id) return;
+
+  try {
+    /* Edit note */
+    if (action === "edit-note") {
+      const note = state.notes.find(item => item.id === id);
+      if (!note) return notify("নোটটি খুঁজে পাওয়া যায়নি।");
+
+      editingNoteId = id;
+      $("noteTitle").value = note.title || "";
+      $("noteSubject").value = note.subject || "";
+      $("noteContent").value = note.content || "";
+      $("saveNoteBtn").textContent = "✓ নোট আপডেট";
+
+      $("noteTitle").focus();
+
+      window.scrollTo({
+        top: $("noteTitle").getBoundingClientRect().top + window.scrollY - 100,
+        behavior: "smooth"
+      });
+
+      return;
+    }
+
+    /* Delete note */
+    if (action === "delete-note") {
+      if (!confirm("এই নোটটি মুছে ফেলবে?")) return;
+
+      const previous = structuredClone(state.notes);
+      state.notes = state.notes.filter(item => item.id !== id);
+
+      if (!await saveSafely()) {
+        state.notes = previous;
+        return;
+      }
+
+      if (editingNoteId === id) {
+        editingNoteId = null;
+        $("noteTitle").value = "";
+        $("noteSubject").value = "";
+        $("noteContent").value = "";
+        $("saveNoteBtn").textContent = "＋ নোট সংরক্ষণ";
+      }
+
+      renderAll();
+      notify("নোট মুছে ফেলা হয়েছে।");
+      return;
+    }
+
+    /* Share note */
+    if (action === "share-note") {
+      const note = state.notes.find(item => item.id === id);
+
+      if (note) {
+        await shareText(
+          note.title,
+          `${note.subject || ""}\n\n${note.content || ""}`
+        );
+      }
+
+      return;
+    }
+
+    /* Edit flashcard */
+    if (action === "edit-flash") {
+      const card = state.flashcards.find(item => item.id === id);
+      if (!card) return notify("ফ্ল্যাশকার্ডটি খুঁজে পাওয়া যায়নি।");
+
+      editingFlashId = id;
+      $("flashQuestion").value = card.question || "";
+      $("flashAnswer").value = card.answer || "";
+      $("saveFlashBtn").textContent = "✓ ফ্ল্যাশকার্ড আপডেট";
+
+      $("flashQuestion").focus();
+
+      window.scrollTo({
+        top: $("flashQuestion").getBoundingClientRect().top + window.scrollY - 100,
+        behavior: "smooth"
+      });
+
+      return;
+    }
+
+    /* Delete flashcard */
+    if (action === "delete-flash") {
+      if (!confirm("এই ফ্ল্যাশকার্ডটি মুছে ফেলবে?")) return;
+
+      const previous = structuredClone(state.flashcards);
+      state.flashcards = state.flashcards.filter(item => item.id !== id);
+
+      if (!await saveSafely()) {
+        state.flashcards = previous;
+        return;
+      }
+
+      if (editingFlashId === id) {
+        editingFlashId = null;
+        $("flashQuestion").value = "";
+        $("flashAnswer").value = "";
+        $("saveFlashBtn").textContent = "＋ ফ্ল্যাশকার্ড সংরক্ষণ";
+      }
+
+      renderAll();
+      notify("ফ্ল্যাশকার্ড মুছে ফেলা হয়েছে।");
+      return;
+    }
+
+    /* Rename picture */
+    if (action === "rename-picture") {
+      const pic = state.pictures.find(item => item.id === id);
+      if (!pic) return notify("ছবিটি খুঁজে পাওয়া যায়নি।");
+
+      const title = prompt("ছবির নতুন নাম লেখো:", pic.title);
+      if (title === null || !title.trim()) return;
+
+      const previous = structuredClone(state.pictures);
+      pic.title = title.trim();
+
+      if (!await saveSafely()) {
+        state.pictures = previous;
+        return;
+      }
+
+      renderPictures();
+      notify("ছবির নাম পরিবর্তন হয়েছে।");
+      return;
+    }
+
+    /* Share or download picture */
+    if (action === "share-picture") {
+      const pic = state.pictures.find(item => item.id === id);
+      if (pic) await sharePicture(pic);
+      return;
+    }
+
+    /* Create PDF from saved picture */
+    if (action === "picture-pdf") {
+      const pic = state.pictures.find(item => item.id === id);
+      if (!pic) return notify("ছবিটি খুঁজে পাওয়া যায়নি।");
+
+      await createPdfFromData(pic.data, pic.title);
+      notify("PDF তৈরি হয়েছে।");
+      return;
+    }
+
+    /* Delete picture */
+    if (action === "delete-picture") {
+      if (!confirm("এই ছবিটি মুছে ফেলবে?")) return;
+
+      const previous = structuredClone(state.pictures);
+      state.pictures = state.pictures.filter(item => item.id !== id);
+
+      if (!await saveSafely()) {
+        state.pictures = previous;
+        return;
+      }
+
+      renderPictures();
+      notify("ছবি মুছে ফেলা হয়েছে।");
+      return;
+    }
+
+    /* Delete exam */
+    if (action === "delete-exam") {
+      if (!confirm("এই পরীক্ষার রুটিনটি মুছে ফেলবে?")) return;
+
+      const previous = structuredClone(state.exams);
+      state.exams = state.exams.filter(item => item.id !== id);
+
+      if (!await saveSafely()) {
+        state.exams = previous;
+        return;
+      }
+
+      renderExams();
+      notify("পরীক্ষার রুটিন মুছে ফেলা হয়েছে।");
+      return;
+    }
+  } catch (error) {
+    console.error("Action failed:", action, error);
+    notify("কাজটি সম্পন্ন করা যায়নি। আবার চেষ্টা করো।");
+  }
 });
 
 /* ---------- Render all ---------- */
@@ -1282,11 +1546,8 @@ async function initialize() {
     renderAll();
     updateTimerDisplay();
 
-    // Register offline support after the app has loaded.
     registerOfflineSupport();
 
-    // A modal dialog blocks the page behind it.
-    // Do not make the body inert: that can block the dialog itself.
     await requireUnlock();
   } catch (error) {
     console.error("Initialization failed:", error);
@@ -1297,7 +1558,7 @@ async function initialize() {
   }
 }
 
-// Refresh countdown numbers without rebuilding other sections.
+/* Refresh countdown without rebuilding other sections */
 setInterval(() => {
   if (state.exams.length) renderExams();
 }, 1000);
