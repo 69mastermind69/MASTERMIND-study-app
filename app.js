@@ -514,72 +514,166 @@ $("savePictureBtn").addEventListener("click", async () => {
   }
 });
 
+
 /* ---------- Exams and countdown ---------- */
 
 function renderExams() {
-  const exams = [...state.exams].sort(
-    (a, b) => new Date(a.date) - new Date(b.date)
-  );
+  const list = $("examsList");
 
-  $("examsList").innerHTML = exams.length
-    ? exams.map(exam => {
-      const distance = new Date(exam.date).getTime() - Date.now();
-      let countdown = "পরীক্ষার সময় পেরিয়ে গেছে";
+  if (!list) return;
 
-      if (distance > 0) {
-        const total = Math.floor(distance / 1000);
-        const days = Math.floor(total / 86400);
-        const hours = Math.floor((total % 86400) / 3600);
-        const minutes = Math.floor((total % 3600) / 60);
-        const seconds = total % 60;
+  const exams = [...state.exams].sort((a, b) => {
+    return new Date(a.date).getTime() - new Date(b.date).getTime();
+  });
 
-        countdown =
-          `${days} দিন ${hours} ঘণ্টা ${minutes} মিনিট ${seconds} সেকেন্ড`;
-      }
-
-      return `
-        <article class="item-card">
-          <h3>${safeText(exam.title)}</h3>
-          <p>⏳ ${safeText(countdown)}</p>
-          <div class="item-meta">
-            ${safeText(new Date(exam.date).toLocaleString("bn-BD"))}
-          </div>
-          <div class="item-actions">
-            <button type="button" class="delete-btn" data-action="delete-exam" data-id="${safeText(exam.id)}">
-              মুছুন
-            </button>
-          </div>
-        </article>
-      `;
-    }).join("")
-    : '<div class="empty-state">এখনো কোনো পরীক্ষার রুটিন যোগ করা হয়নি।</div>';
-}
-
-$("saveExamBtn").addEventListener("click", async () => {
-  const title = $("examTitle").value.trim();
-  const date = $("examDate").value;
-
-  if (!title || !date || Number.isNaN(new Date(date).getTime())) {
-    return notify("পরীক্ষার নাম ও সঠিক তারিখ দাও।");
-  }
-
-  if (new Date(date).getTime() <= Date.now()) {
-    return notify("ভবিষ্যতের তারিখ নির্বাচন করো।");
-  }
-
-  const exam = { id: makeId(), title, date };
-  state.exams.push(exam);
-
-  if (!await saveSafely()) {
-    state.exams = state.exams.filter(item => item.id !== exam.id);
+  if (!exams.length) {
+    list.innerHTML =
+      '<div class="empty-state">এখনো কোনো পরীক্ষার রুটিন যোগ করা হয়নি।</div>';
     return;
   }
 
-  $("examTitle").value = "";
-  $("examDate").value = "";
+  list.innerHTML = exams.map(exam => {
+    const examTime = new Date(exam.date).getTime();
+    const distance = examTime - Date.now();
 
-  renderAll();
-  notify("পরীক্ষার রুটিন সংরক্ষণ করা হয়েছে।");
+    let countdown;
+
+    if (Number.isNaN(examTime)) {
+      countdown = "তারিখ সঠিক নয়";
+    } else if (distance <= 0) {
+      countdown = "পরীক্ষার সময় পেরিয়ে গেছে";
+    } else {
+      const total = Math.floor(distance / 1000);
+      const days = Math.floor(total / 86400);
+      const hours = Math.floor((total % 86400) / 3600);
+      const minutes = Math.floor((total % 3600) / 60);
+      const seconds = total % 60;
+
+      countdown =
+        `${days} দিন ${hours} ঘণ্টা ${minutes} মিনিট ${seconds} সেকেন্ড`;
+    }
+
+    const displayDate = Number.isNaN(examTime)
+      ? exam.date
+      : new Date(examTime).toLocaleString("bn-BD");
+
+    return `
+      <article class="item-card">
+        <h3>${safeText(exam.title)}</h3>
+        <p>⏳ ${safeText(countdown)}</p>
+        <div class="item-meta">
+          ${safeText(displayDate)}
+        </div>
+        <div class="item-actions">
+          <button
+            type="button"
+            class="delete-btn"
+            data-action="delete-exam"
+            data-id="${safeText(exam.id)}"
+          >মুছুন</button>
+        </div>
+      </article>
+    `;
+  }).join("");
+}
+
+$("saveExamBtn").addEventListener("click", async () => {
+  if (savingExam) return;
+
+  const titleInput = $("examTitle");
+  const dateInput = $("examDate");
+
+  const title = titleInput.value.trim();
+  const dateValue = dateInput.value;
+
+  if (!title || !dateValue) {
+    notify("পরীক্ষার নাম ও তারিখ-সময় পূরণ করো।");
+    return;
+  }
+
+  /*
+   * datetime-local-এর মান স্থানীয় সময় হিসেবে যাচাই করা হচ্ছে।
+   * Date.parse() দিয়ে সরাসরি UTC ধরে নেওয়া হচ্ছে না।
+   */
+  const match = dateValue.match(
+    /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/
+  );
+
+  if (!match) {
+    notify("সঠিক পরীক্ষার তারিখ ও সময় নির্বাচন করো।");
+    return;
+  }
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const hour = Number(match[4]);
+  const minute = Number(match[5]);
+
+  const examDate = new Date(
+    year,
+    month - 1,
+    day,
+    hour,
+    minute,
+    0,
+    0
+  );
+
+  const isValidDate =
+    examDate.getFullYear() === year &&
+    examDate.getMonth() === month - 1 &&
+    examDate.getDate() === day &&
+    examDate.getHours() === hour &&
+    examDate.getMinutes() === minute;
+
+  if (!isValidDate || Number.isNaN(examDate.getTime())) {
+    notify("নির্বাচিত তারিখ ও সময় সঠিক নয়।");
+    return;
+  }
+
+  if (examDate.getTime() <= Date.now()) {
+    notify("বর্তমান সময়ের পরের কোনো তারিখ ও সময় নির্বাচন করো।");
+    return;
+  }
+
+  savingExam = true;
+
+  const exam = {
+    id: makeId(),
+    title,
+    // ISO string-এ সংরক্ষণ করলে সময় নির্ভরযোগ্যভাবে ফিরে পাওয়া যায়।
+    date: examDate.toISOString()
+  };
+
+  state.exams.push(exam);
+
+  try {
+    const saved = await saveSafely();
+
+    if (!saved) {
+      state.exams = state.exams.filter(item => item.id !== exam.id);
+      renderExams();
+      return;
+    }
+
+    titleInput.value = "";
+    dateInput.value = "";
+
+    renderExams();
+
+    notify("পরীক্ষার রুটিন সফলভাবে সংরক্ষণ করা হয়েছে।");
+  } catch (error) {
+    console.error("Exam save failed:", error);
+
+    state.exams = state.exams.filter(item => item.id !== exam.id);
+
+    renderExams();
+
+    notify("পরীক্ষার রুটিন সংরক্ষণ করা যায়নি। আবার চেষ্টা করো।");
+  } finally {
+    savingExam = false;
+  }
 });
 
 /* ---------- Study history ---------- */
