@@ -1,13 +1,7 @@
 
 "use strict";
 
-/*
- * MASTERMIND Study App
- * Updated service worker
- * Cache version: v2
- */
-
-const CACHE_NAME = "mastermind-study-v2";
+const CACHE_NAME = "mastermind-study-v3";
 
 const APP_FILES = [
   "./",
@@ -17,7 +11,7 @@ const APP_FILES = [
   "./manifest.json"
 ];
 
-/* Install the new cache */
+// Install and cache app files
 self.addEventListener("install", event => {
   event.waitUntil(
     caches.open(CACHE_NAME)
@@ -26,23 +20,25 @@ self.addEventListener("install", event => {
   );
 });
 
-/* Activate new worker and remove old app caches */
+// Activate new version and delete old caches
 self.addEventListener("activate", event => {
   event.waitUntil(
     caches.keys()
-      .then(keys => Promise.all(
-        keys
-          .filter(key =>
-            key.startsWith("mastermind-study-") &&
-            key !== CACHE_NAME
-          )
-          .map(key => caches.delete(key))
-      ))
+      .then(names =>
+        Promise.all(
+          names
+            .filter(name =>
+              name.startsWith("mastermind-study-") &&
+              name !== CACHE_NAME
+            )
+            .map(name => caches.delete(name))
+        )
+      )
       .then(() => self.clients.claim())
   );
 });
 
-/* Serve updated files from network, with offline fallback */
+// Network first, cached version if offline
 self.addEventListener("fetch", event => {
   const request = event.request;
 
@@ -52,36 +48,38 @@ self.addEventListener("fetch", event => {
 
   if (url.origin !== self.location.origin) return;
 
-  event.respondWith((async () => {
-    const cache = await caches.open(CACHE_NAME);
+  event.respondWith(
+    (async () => {
+      const cache = await caches.open(CACHE_NAME);
 
-    try {
-      const response = await fetch(request);
+      try {
+        const response = await fetch(request);
 
-      if (response && response.ok && response.type === "basic") {
-        await cache.put(request, response.clone());
-      }
-
-      return response;
-    } catch (error) {
-      const cached = await cache.match(request);
-
-      if (cached) return cached;
-
-      if (request.mode === "navigate") {
-        const home = await cache.match("./index.html");
-        if (home) return home;
-      }
-
-      return new Response(
-        "অফলাইন আছো। এই ফাইলটি আগে ক্যাশে সংরক্ষিত ছিল না।",
-        {
-          status: 503,
-          headers: {
-            "Content-Type": "text/plain; charset=utf-8"
-          }
+        if (response.ok && response.type === "basic") {
+          await cache.put(request, response.clone());
         }
-      );
-    }
-  })());
+
+        return response;
+      } catch (error) {
+        const cached = await cache.match(request);
+
+        if (cached) return cached;
+
+        if (request.mode === "navigate") {
+          const home = await cache.match("./index.html");
+          if (home) return home;
+        }
+
+        return new Response(
+          "তুমি এখন অফলাইনে আছো। পরে আবার চেষ্টা করো।",
+          {
+            status: 503,
+            headers: {
+              "Content-Type": "text/plain; charset=utf-8"
+            }
+          }
+        );
+      }
+    })()
+  );
 });
