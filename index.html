@@ -6,152 +6,376 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#101827">
   <meta name="description" content="MASTERMIND Study App - Free Offline Study Planner">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="MASTERMIND">
   <title>MASTERMIND Study App</title>
 
   <link rel="manifest" href="./manifest.json">
   <link rel="stylesheet" href="./style.css">
-
-  <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-title" content="MASTERMIND">
 </head>
 <body>
   <header class="topbar">
-    <div class="brand">
-      <div class="brand-icon">M</div>
-      <div>
-        <h1>MASTERMIND</h1>
-        <small>STUDY SPACE</small>
-      </div>
+    <button class="brand" id="brandHomeBtn" type="button" aria-label="Home">
+      <span class="brand-icon">M</span>
+      <span class="brand-copy">
+        <strong>MASTERMIND</strong>
+        <small>YOUR STUDY SPACE</small>
+      </span>
+    </button>
+
+    <div class="header-actions">
+      <button id="homeBtn" class="home-btn" type="button" hidden>
+        ← Home
+      </button>
+      <button id="themeBtn" class="icon-btn" type="button" aria-label="থিম পরিবর্তন">🌙</button>
     </div>
-    <button id="themeBtn" class="icon-btn" aria-label="থিম পরিবর্তন">🌙</button>
   </header>
 
   <main class="container">
-    <section class="welcome card">
-      <p class="eyebrow">YOUR PERSONAL STUDY SPACE</p>
-      <h2>স্বাগতম, <span id="userGreeting">শিক্ষার্থী</span>! 👋</h2>
-      <p>আজকের ছোট্ট অগ্রগতিই আগামীকালের সাফল্য।</p>
+    <!-- HOME DASHBOARD -->
+    <section id="homePage" class="page dashboard-page">
+      <section class="welcome hero-card">
+        <div class="hero-orb orb-one"></div>
+        <div class="hero-orb orb-two"></div>
 
-      <label for="userName">তোমার নাম</label>
-      <div class="inline-form">
-        <input id="userName" type="text" placeholder="তোমার নাম লেখো" maxlength="50">
-        <button id="saveNameBtn" class="primary-btn">সংরক্ষণ</button>
+        <p class="eyebrow">YOUR PERSONAL STUDY SPACE</p>
+        <h1>স্বাগতম, <span id="userGreeting">শিক্ষার্থী</span>! 👋</h1>
+        <p class="hero-description">
+          আজকের ছোট্ট অগ্রগতিই আগামীকালের সাফল্য।
+        </p>
+
+        <div class="name-editor">
+          <label for="userName">তোমার নাম</label>
+          <div class="inline-form">
+            <input id="userName" type="text" placeholder="তোমার নাম লেখো" maxlength="50">
+            <button id="saveNameBtn" class="primary-btn" type="button">সংরক্ষণ</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="stats-grid" aria-label="পড়াশোনার পরিসংখ্যান">
+        <article class="stat card">
+          <span class="stat-icon">📝</span>
+          <p>মোট নোট</p>
+          <strong id="notesCount">0</strong>
+        </article>
+        <article class="stat card">
+          <span class="stat-icon">🧠</span>
+          <p>ফ্ল্যাশকার্ড</p>
+          <strong id="cardsCount">0</strong>
+        </article>
+        <article class="stat card">
+          <span class="stat-icon">⏱️</span>
+          <p>আজকের পড়া</p>
+          <strong id="todayTime">0 মিনিট</strong>
+        </article>
+      </section>
+
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">EXPLORE YOUR SPACE</p>
+          <h2>তোমার Study Tools</h2>
+          <p class="muted">যে ফিচারটি দরকার, সেটির কার্ডে চাপ দাও।</p>
+        </div>
       </div>
+
+      <section class="feature-grid">
+        <button class="feature-card feature-cyan" type="button" data-open-page="timerPage">
+          <span class="feature-icon">⏱️</span>
+          <span class="feature-name">Focus Timer</span>
+          <span class="feature-description">মনোযোগ দিয়ে পড়াশোনা করো</span>
+          <span class="feature-arrow">↗</span>
+        </button>
+
+        <button class="feature-card feature-purple" type="button" data-open-page="notesPage">
+          <span class="feature-icon">📝</span>
+          <span class="feature-name">My Notes</span>
+          <span class="feature-description">নোট লেখো, খোঁজো ও সম্পাদনা করো</span>
+          <span class="feature-arrow">↗</span>
+        </button>
+
+        <button class="feature-card feature-green" type="button" data-open-page="flashcardsPage">
+          <span class="feature-icon">🧠</span>
+          <span class="feature-name">Flashcards</span>
+          <span class="feature-description">প্রশ্ন ও উত্তর দিয়ে অনুশীলন</span>
+          <span class="feature-arrow">↗</span>
+        </button>
+
+        <button class="feature-card feature-orange" type="button" data-open-page="picturesPage">
+          <span class="feature-icon">🖼️</span>
+          <span class="feature-name">My Pictures</span>
+          <span class="feature-description">ছবি সংরক্ষণ, শেয়ার ও PDF</span>
+          <span class="feature-arrow">↗</span>
+        </button>
+
+        <button class="feature-card feature-pink" type="button" data-open-page="examsPage">
+          <span class="feature-icon">📅</span>
+          <span class="feature-name">Exam Countdown</span>
+          <span class="feature-description">পরীক্ষার তারিখ ও বাকি সময়</span>
+          <span class="feature-arrow">↗</span>
+        </button>
+
+        <button class="feature-card feature-yellow" type="button" data-open-page="historyPage">
+          <span class="feature-icon">📊</span>
+          <span class="feature-name">Study Progress</span>
+          <span class="feature-description">পড়াশোনার সময় ও ইতিহাস</span>
+          <span class="feature-arrow">↗</span>
+        </button>
+
+        <button class="feature-card feature-blue" type="button" data-open-page="settingsPage">
+          <span class="feature-icon">⚙️</span>
+          <span class="feature-name">Data & Settings</span>
+          <span class="feature-description">ব্যাকআপ, লক ও অ্যাপ ডেটা</span>
+          <span class="feature-arrow">↗</span>
+        </button>
+
+        <button class="feature-card feature-rose" type="button" data-open-page="aboutPage">
+          <span class="feature-icon">✦</span>
+          <span class="feature-name">About MASTERMIND</span>
+          <span class="feature-description">অ্যাপের অনুপ্রেরণার বার্তা</span>
+          <span class="feature-arrow">↗</span>
+        </button>
+      </section>
     </section>
 
-    <section class="stats-grid">
-      <div class="stat card">
-        <span>📚</span>
-        <p>মোট নোট</p>
-        <strong id="notesCount">0</strong>
+    <!-- FOCUS TIMER -->
+    <section id="timerPage" class="page feature-page" hidden>
+      <div class="page-heading">
+        <span class="page-heading-icon">⏱️</span>
+        <div>
+          <p class="eyebrow">STAY FOCUSED</p>
+          <h1>ফোকাস টাইমার</h1>
+          <p class="muted">একটি বিষয় বেছে নিয়ে পড়া শুরু করো।</p>
+        </div>
       </div>
-      <div class="stat card">
-        <span>🧠</span>
-        <p>ফ্ল্যাশকার্ড</p>
-        <strong id="cardsCount">0</strong>
+
+      <section class="card feature-content timer-card">
+        <label for="studySubject">পড়ার বিষয়</label>
+        <input id="studySubject" type="text" placeholder="যেমন: গণিত">
+
+        <label for="focusMinutes">সময় (মিনিট)</label>
+        <input id="focusMinutes" type="number" min="1" max="300" value="25">
+
+        <div id="timerDisplay" class="timer-display">25:00</div>
+
+        <div class="button-row">
+          <button id="startTimerBtn" class="primary-btn" type="button">▶ শুরু</button>
+          <button id="pauseTimerBtn" class="secondary-btn" type="button">⏸ বিরতি</button>
+          <button id="resetTimerBtn" class="secondary-btn" type="button">↻ রিসেট</button>
+        </div>
+
+        <p id="timerMessage" class="muted" aria-live="polite">মনোযোগ দিয়ে শুরু করো!</p>
+      </section>
+    </section>
+
+    <!-- NOTES -->
+    <section id="notesPage" class="page feature-page" hidden>
+      <div class="page-heading">
+        <span class="page-heading-icon">📝</span>
+        <div>
+          <p class="eyebrow">WRITE & ORGANIZE</p>
+          <h1>আমার নোট</h1>
+          <p class="muted">তোমার দরকারি পড়ার নোট এক জায়গায় রাখো।</p>
+        </div>
       </div>
-      <div class="stat card">
-        <span>⏱️</span>
-        <p>আজকের পড়া</p>
-        <strong id="todayTime">0 মিনিট</strong>
+
+      <section class="card feature-content">
+        <label for="noteTitle">নোটের নাম</label>
+        <input id="noteTitle" type="text" placeholder="নোটের শিরোনাম">
+
+        <label for="noteSubject">বিষয়</label>
+        <input id="noteSubject" type="text" placeholder="যেমন: বিজ্ঞান">
+
+        <label for="noteContent">নোট লেখো</label>
+        <textarea id="noteContent" rows="5" placeholder="এখানে তোমার নোট লেখো..."></textarea>
+
+        <button id="saveNoteBtn" class="primary-btn full-btn" type="button">＋ নোট সংরক্ষণ</button>
+
+        <div class="list-heading">
+          <h2>সংরক্ষিত নোট</h2>
+        </div>
+        <label for="noteSearch">নোট খুঁজুন</label>
+        <input id="noteSearch" type="search" placeholder="নামের বা লেখার অংশ লিখো">
+        <div id="notesList" class="item-list"></div>
+      </section>
+    </section>
+
+    <!-- FLASHCARDS -->
+    <section id="flashcardsPage" class="page feature-page" hidden>
+      <div class="page-heading">
+        <span class="page-heading-icon">🧠</span>
+        <div>
+          <p class="eyebrow">LEARN & REVISE</p>
+          <h1>ফ্ল্যাশকার্ড</h1>
+          <p class="muted">নিজের প্রশ্ন ও উত্তর তৈরি করে অনুশীলন করো।</p>
+        </div>
       </div>
+
+      <section class="card feature-content">
+        <label for="flashQuestion">প্রশ্ন</label>
+        <textarea id="flashQuestion" rows="2" placeholder="প্রশ্ন লেখো"></textarea>
+
+        <label for="flashAnswer">উত্তর</label>
+        <textarea id="flashAnswer" rows="2" placeholder="উত্তর লেখো"></textarea>
+
+        <button id="saveFlashBtn" class="primary-btn full-btn" type="button">＋ ফ্ল্যাশকার্ড সংরক্ষণ</button>
+
+        <div class="list-heading">
+          <h2>তোমার ফ্ল্যাশকার্ড</h2>
+        </div>
+        <div id="flashList" class="item-list"></div>
+      </section>
     </section>
 
-    <section class="card">
-      <h2>⏱️ ফোকাস টাইমার</h2>
-      <p class="muted">একটি বিষয় বেছে নিয়ে পড়া শুরু করো।</p>
-
-      <label for="studySubject">পড়ার বিষয়</label>
-      <input id="studySubject" type="text" placeholder="যেমন: গণিত">
-
-      <label for="focusMinutes">সময় (মিনিট)</label>
-      <input id="focusMinutes" type="number" min="1" max="300" value="25">
-
-      <div id="timerDisplay" class="timer-display">25:00</div>
-
-      <div class="button-row">
-        <button id="startTimerBtn" class="primary-btn">▶ শুরু</button>
-        <button id="pauseTimerBtn" class="secondary-btn">⏸ বিরতি</button>
-        <button id="resetTimerBtn" class="secondary-btn">↻ রিসেট</button>
+    <!-- PICTURES -->
+    <section id="picturesPage" class="page feature-page" hidden>
+      <div class="page-heading">
+        <span class="page-heading-icon">🖼️</span>
+        <div>
+          <p class="eyebrow">SAVE YOUR MATERIALS</p>
+          <h1>ছবি সংরক্ষণ</h1>
+          <p class="muted">পড়ার ছবি রাখো এবং প্রয়োজনে PDF তৈরি করো।</p>
+        </div>
       </div>
-      <p id="timerMessage" class="muted" aria-live="polite">মনোযোগ দিয়ে শুরু করো!</p>
+
+      <section class="card feature-content">
+        <label for="pictureTitle">ছবির নাম</label>
+        <input id="pictureTitle" type="text" placeholder="যেমন: অধ্যায় ১">
+
+        <label for="pictureFile">ছবি বেছে নাও</label>
+        <input id="pictureFile" type="file" accept="image/*">
+
+        <button id="savePictureBtn" class="primary-btn full-btn" type="button">＋ ছবি সংরক্ষণ</button>
+
+        <div class="list-heading">
+          <h2>সংরক্ষিত ছবি</h2>
+        </div>
+        <div id="picturesList" class="item-list"></div>
+
+        <div class="utility-panel">
+          <h3>📄 ছবি থেকে PDF</h3>
+          <p class="muted">উপরের ফাইল থেকে অথবা সংরক্ষিত ছবি দিয়ে PDF তৈরি করতে পারো।</p>
+          <button id="pdfBtn" class="secondary-btn full-btn" type="button">PDF তৈরি করো</button>
+        </div>
+      </section>
     </section>
 
-    <section class="card">
-      <h2>📝 আমার নোট</h2>
-      <label for="noteTitle">নোটের নাম</label>
-      <input id="noteTitle" type="text" placeholder="নোটের শিরোনাম">
+    <!-- EXAMS -->
+    <section id="examsPage" class="page feature-page" hidden>
+      <div class="page-heading">
+        <span class="page-heading-icon">📅</span>
+        <div>
+          <p class="eyebrow">BE READY ON TIME</p>
+          <h1>পরীক্ষার কাউন্টডাউন</h1>
+          <p class="muted">পরবর্তী পরীক্ষার জন্য সময়মতো প্রস্তুতি নাও।</p>
+        </div>
+      </div>
 
-      <label for="noteSubject">বিষয়</label>
-      <input id="noteSubject" type="text" placeholder="যেমন: বিজ্ঞান">
+      <section class="card feature-content">
+        <label for="examTitle">পরীক্ষার নাম</label>
+        <input id="examTitle" type="text" placeholder="যেমন: বার্ষিক পরীক্ষা">
 
-      <label for="noteContent">নোট লেখো</label>
-      <textarea id="noteContent" rows="5" placeholder="এখানে তোমার নোট লেখো..."></textarea>
+        <label for="examDate">পরীক্ষার তারিখ ও সময়</label>
+        <input id="examDate" type="datetime-local">
 
-      <button id="saveNoteBtn" class="primary-btn full-btn">＋ নোট সংরক্ষণ</button>
+        <button id="saveExamBtn" class="primary-btn full-btn" type="button">＋ পরীক্ষার রুটিন যোগ করো</button>
 
-      <label for="noteSearch">নোট খুঁজুন</label>
-      <input id="noteSearch" type="search" placeholder="নামের বা লেখার অংশ লিখো">
-
-      <div id="notesList" class="item-list"></div>
+        <div class="list-heading">
+          <h2>পরীক্ষার তালিকা</h2>
+        </div>
+        <div id="examsList" class="item-list"></div>
+      </section>
     </section>
 
-    <section class="card">
-      <h2>🧠 ফ্ল্যাশকার্ড</h2>
-      <label for="flashQuestion">প্রশ্ন</label>
-      <textarea id="flashQuestion" rows="2" placeholder="প্রশ্ন লেখো"></textarea>
+    <!-- STUDY HISTORY -->
+    <section id="historyPage" class="page feature-page" hidden>
+      <div class="page-heading">
+        <span class="page-heading-icon">📊</span>
+        <div>
+          <p class="eyebrow">YOUR STUDY JOURNEY</p>
+          <h1>পড়ার হিসাব</h1>
+          <p class="muted">সম্পন্ন পড়ার সেশন ও বিষয়ভিত্তিক সময়।</p>
+        </div>
+      </div>
 
-      <label for="flashAnswer">উত্তর</label>
-      <textarea id="flashAnswer" rows="2" placeholder="উত্তর লেখো"></textarea>
-
-      <button id="saveFlashBtn" class="primary-btn full-btn">＋ ফ্ল্যাশকার্ড সংরক্ষণ</button>
-      <div id="flashList" class="item-list"></div>
+      <section class="card feature-content">
+        <div class="history-summary">
+          <span>⏱️</span>
+          <div>
+            <p class="muted">আজকের মোট পড়া</p>
+            <strong id="historyTodayTime">0 মিনিট</strong>
+          </div>
+        </div>
+        <div id="studyHistory" class="item-list"></div>
+      </section>
     </section>
 
-    <section class="card">
-      <h2>🖼️ ছবি সংরক্ষণ</h2>
-      <label for="pictureTitle">ছবির নাম</label>
-      <input id="pictureTitle" type="text" placeholder="যেমন: অধ্যায় ১">
+    <!-- SETTINGS -->
+    <section id="settingsPage" class="page feature-page" hidden>
+      <div class="page-heading">
+        <span class="page-heading-icon">⚙️</span>
+        <div>
+          <p class="eyebrow">BACKUP & CONTROL</p>
+          <h1>ডেটা ও সেটিংস</h1>
+          <p class="muted">তোমার ডেটা সংরক্ষণ ও পরিচালনা করো।</p>
+        </div>
+      </div>
 
-      <label for="pictureFile">ছবি বেছে নাও</label>
-      <input id="pictureFile" type="file" accept="image/*">
+      <section class="card feature-content">
+        <div class="setting-item">
+          <span class="setting-icon">⬇️</span>
+          <div class="setting-copy">
+            <h3>ডেটা Export</h3>
+            <p>তোমার পড়ার ডেটার ব্যাকআপ ফাইল তৈরি করো।</p>
+          </div>
+          <button id="exportBtn" class="secondary-btn" type="button">Export</button>
+        </div>
 
-      <button id="savePictureBtn" class="primary-btn full-btn">ছবি সংরক্ষণ</button>
-      <div id="picturesList" class="item-list"></div>
+        <div class="setting-item">
+          <span class="setting-icon">⬆️</span>
+          <div class="setting-copy">
+            <h3>ডেটা Import</h3>
+            <p>আগের ব্যাকআপ থেকে ডেটা ফিরিয়ে আনো।</p>
+          </div>
+          <button id="importBtn" class="secondary-btn" type="button">Import</button>
+          <input id="importFile" type="file" accept=".json,application/json" hidden>
+        </div>
+
+        <div class="setting-item">
+          <span class="setting-icon">🔒</span>
+          <div class="setting-copy">
+            <h3>অ্যাপ লক</h3>
+            <p>PIN দিয়ে অ্যাপ লক চালু, পরিবর্তন বা বন্ধ করো।</p>
+          </div>
+          <button id="lockBtn" class="secondary-btn" type="button">সেটিংস</button>
+        </div>
+
+        <div class="danger-panel">
+          <h3>⚠️ সব ডেটা মুছে ফেলো</h3>
+          <p>এই কাজ করলে সংরক্ষিত নোট, ছবি, ফ্ল্যাশকার্ড, পরীক্ষা ও পড়ার ইতিহাস মুছে যাবে।</p>
+          <button id="deleteAllBtn" class="danger-btn full-btn" type="button">সব অ্যাপ ডেটা মুছে ফেলো</button>
+        </div>
+      </section>
     </section>
 
-    <section class="card">
-      <h2>📅 পরীক্ষার কাউন্টডাউন</h2>
-      <label for="examTitle">পরীক্ষার নাম</label>
-      <input id="examTitle" type="text" placeholder="যেমন: বার্ষিক পরীক্ষা">
+    <!-- ABOUT -->
+    <section id="aboutPage" class="page feature-page" hidden>
+      <div class="page-heading">
+        <span class="page-heading-icon">✦</span>
+        <div>
+          <p class="eyebrow">MADE FOR LEARNING</p>
+          <h1>About MASTERMIND</h1>
+          <p class="muted">তোমার ব্যক্তিগত পড়াশোনার জায়গা।</p>
+        </div>
+      </div>
 
-      <label for="examDate">পরীক্ষার তারিখ ও সময়</label>
-      <input id="examDate" type="datetime-local">
-
-      <button id="saveExamBtn" class="primary-btn full-btn">＋ পরীক্ষার রুটিন যোগ করো</button>
-      <div id="examsList" class="item-list"></div>
-    </section>
-
-    <section class="card">
-      <h2>📊 পড়ার হিসাব</h2>
-      <p class="muted">সম্পন্ন পড়ার সেশন ও বিষয়ভিত্তিক সময়।</p>
-      <div id="studyHistory" class="item-list"></div>
-    </section>
-
-    <section class="card">
-      <h2>🛠️ ডেটা ও সেটিংস</h2>
-      <button id="exportBtn" class="secondary-btn full-btn">⬇ ডেটা Export</button>
-      <button id="importBtn" class="secondary-btn full-btn">⬆ ডেটা Import</button>
-      <input id="importFile" type="file" accept=".json,application/json" hidden>
-      <button id="lockBtn" class="secondary-btn full-btn">🔒 অ্যাপ লক সেটিংস</button>
-      <button id="pdfBtn" class="secondary-btn full-btn">📄 ছবি থেকে PDF</button>
-      <button id="deleteAllBtn" class="danger-btn full-btn">সব অ্যাপ ডেটা মুছে ফেলো</button>
-    </section>
-
-    <section class="card developer-card">
-      <button id="developerBtn" class="developer-btn">✦ MASTERMIND ✦</button>
-      <p id="developerMessage" hidden>তোমার স্বপ্ন, তোমার পরিশ্রম, তোমার সাফল্য।</p>
+      <section class="card feature-content developer-card">
+        <div class="about-logo">M</div>
+        <h2>✦ MASTERMIND ✦</h2>
+        <p id="developerMessage">তোমার স্বপ্ন, তোমার পরিশ্রম, তোমার সাফল্য।</p>
+        <button id="developerBtn" class="secondary-btn" type="button">অনুপ্রেরণার বার্তা</button>
+      </section>
     </section>
   </main>
 
@@ -173,5 +397,57 @@
   </dialog>
 
   <script src="./app.js"></script>
+
+  <!-- Navigation between the dashboard and feature pages -->
+  <script>
+    (() => {
+      const homePage = document.getElementById("homePage");
+      const homeBtn = document.getElementById("homeBtn");
+      const brandHomeBtn = document.getElementById("brandHomeBtn");
+      const pages = document.querySelectorAll(".feature-page");
+      const cards = document.querySelectorAll("[data-open-page]");
+
+      function showPage(pageId) {
+        const isHome = pageId === "homePage";
+        homePage.hidden = !isHome;
+
+        pages.forEach(page => {
+          page.hidden = page.id !== pageId;
+        });
+
+        homeBtn.hidden = isHome;
+        document.body.classList.toggle("feature-open", !isHome);
+
+        window.scrollTo({ top: 0, behavior: "smooth" });
+
+        if (pageId === "historyPage") {
+          const todayTime = document.getElementById("todayTime");
+          const historyTodayTime = document.getElementById("historyTodayTime");
+          if (todayTime && historyTodayTime) {
+            historyTodayTime.textContent = todayTime.textContent;
+          }
+        }
+      }
+
+      cards.forEach(card => {
+        card.addEventListener("click", () => {
+          const target = card.dataset.openPage;
+          if (document.getElementById(target)) showPage(target);
+        });
+      });
+
+      homeBtn.addEventListener("click", () => showPage("homePage"));
+      brandHomeBtn.addEventListener("click", () => showPage("homePage"));
+
+      document.addEventListener("keydown", event => {
+        if (event.key === "Escape") {
+          const dialog = document.getElementById("appDialog");
+          if (!dialog.open) showPage("homePage");
+        }
+      });
+
+      window.addEventListener("DOMContentLoaded", () => showPage("homePage"));
+    })();
+  </script>
 </body>
 </html>
