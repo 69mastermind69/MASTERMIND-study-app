@@ -1,0 +1,177 @@
+
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#101827">
+  <meta name="description" content="MASTERMIND Study App - Free Offline Study Planner">
+  <title>MASTERMIND Study App</title>
+
+  <link rel="manifest" href="./manifest.json">
+  <link rel="stylesheet" href="./style.css">
+
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="MASTERMIND">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-icon">M</div>
+      <div>
+        <h1>MASTERMIND</h1>
+        <small>STUDY SPACE</small>
+      </div>
+    </div>
+    <button id="themeBtn" class="icon-btn" aria-label="থিম পরিবর্তন">🌙</button>
+  </header>
+
+  <main class="container">
+    <section class="welcome card">
+      <p class="eyebrow">YOUR PERSONAL STUDY SPACE</p>
+      <h2>স্বাগতম, <span id="userGreeting">শিক্ষার্থী</span>! 👋</h2>
+      <p>আজকের ছোট্ট অগ্রগতিই আগামীকালের সাফল্য।</p>
+
+      <label for="userName">তোমার নাম</label>
+      <div class="inline-form">
+        <input id="userName" type="text" placeholder="তোমার নাম লেখো" maxlength="50">
+        <button id="saveNameBtn" class="primary-btn">সংরক্ষণ</button>
+      </div>
+    </section>
+
+    <section class="stats-grid">
+      <div class="stat card">
+        <span>📚</span>
+        <p>মোট নোট</p>
+        <strong id="notesCount">0</strong>
+      </div>
+      <div class="stat card">
+        <span>🧠</span>
+        <p>ফ্ল্যাশকার্ড</p>
+        <strong id="cardsCount">0</strong>
+      </div>
+      <div class="stat card">
+        <span>⏱️</span>
+        <p>আজকের পড়া</p>
+        <strong id="todayTime">0 মিনিট</strong>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>⏱️ ফোকাস টাইমার</h2>
+      <p class="muted">একটি বিষয় বেছে নিয়ে পড়া শুরু করো।</p>
+
+      <label for="studySubject">পড়ার বিষয়</label>
+      <input id="studySubject" type="text" placeholder="যেমন: গণিত">
+
+      <label for="focusMinutes">সময় (মিনিট)</label>
+      <input id="focusMinutes" type="number" min="1" max="300" value="25">
+
+      <div id="timerDisplay" class="timer-display">25:00</div>
+
+      <div class="button-row">
+        <button id="startTimerBtn" class="primary-btn">▶ শুরু</button>
+        <button id="pauseTimerBtn" class="secondary-btn">⏸ বিরতি</button>
+        <button id="resetTimerBtn" class="secondary-btn">↻ রিসেট</button>
+      </div>
+      <p id="timerMessage" class="muted" aria-live="polite">মনোযোগ দিয়ে শুরু করো!</p>
+    </section>
+
+    <section class="card">
+      <h2>📝 আমার নোট</h2>
+      <label for="noteTitle">নোটের নাম</label>
+      <input id="noteTitle" type="text" placeholder="নোটের শিরোনাম">
+
+      <label for="noteSubject">বিষয়</label>
+      <input id="noteSubject" type="text" placeholder="যেমন: বিজ্ঞান">
+
+      <label for="noteContent">নোট লেখো</label>
+      <textarea id="noteContent" rows="5" placeholder="এখানে তোমার নোট লেখো..."></textarea>
+
+      <button id="saveNoteBtn" class="primary-btn full-btn">＋ নোট সংরক্ষণ</button>
+
+      <label for="noteSearch">নোট খুঁজুন</label>
+      <input id="noteSearch" type="search" placeholder="নামের বা লেখার অংশ লিখো">
+
+      <div id="notesList" class="item-list"></div>
+    </section>
+
+    <section class="card">
+      <h2>🧠 ফ্ল্যাশকার্ড</h2>
+      <label for="flashQuestion">প্রশ্ন</label>
+      <textarea id="flashQuestion" rows="2" placeholder="প্রশ্ন লেখো"></textarea>
+
+      <label for="flashAnswer">উত্তর</label>
+      <textarea id="flashAnswer" rows="2" placeholder="উত্তর লেখো"></textarea>
+
+      <button id="saveFlashBtn" class="primary-btn full-btn">＋ ফ্ল্যাশকার্ড সংরক্ষণ</button>
+      <div id="flashList" class="item-list"></div>
+    </section>
+
+    <section class="card">
+      <h2>🖼️ ছবি সংরক্ষণ</h2>
+      <label for="pictureTitle">ছবির নাম</label>
+      <input id="pictureTitle" type="text" placeholder="যেমন: অধ্যায় ১">
+
+      <label for="pictureFile">ছবি বেছে নাও</label>
+      <input id="pictureFile" type="file" accept="image/*">
+
+      <button id="savePictureBtn" class="primary-btn full-btn">ছবি সংরক্ষণ</button>
+      <div id="picturesList" class="item-list"></div>
+    </section>
+
+    <section class="card">
+      <h2>📅 পরীক্ষার কাউন্টডাউন</h2>
+      <label for="examTitle">পরীক্ষার নাম</label>
+      <input id="examTitle" type="text" placeholder="যেমন: বার্ষিক পরীক্ষা">
+
+      <label for="examDate">পরীক্ষার তারিখ ও সময়</label>
+      <input id="examDate" type="datetime-local">
+
+      <button id="saveExamBtn" class="primary-btn full-btn">＋ পরীক্ষার রুটিন যোগ করো</button>
+      <div id="examsList" class="item-list"></div>
+    </section>
+
+    <section class="card">
+      <h2>📊 পড়ার হিসাব</h2>
+      <p class="muted">সম্পন্ন পড়ার সেশন ও বিষয়ভিত্তিক সময়।</p>
+      <div id="studyHistory" class="item-list"></div>
+    </section>
+
+    <section class="card">
+      <h2>🛠️ ডেটা ও সেটিংস</h2>
+      <button id="exportBtn" class="secondary-btn full-btn">⬇ ডেটা Export</button>
+      <button id="importBtn" class="secondary-btn full-btn">⬆ ডেটা Import</button>
+      <input id="importFile" type="file" accept=".json,application/json" hidden>
+      <button id="lockBtn" class="secondary-btn full-btn">🔒 অ্যাপ লক সেটিংস</button>
+      <button id="pdfBtn" class="secondary-btn full-btn">📄 ছবি থেকে PDF</button>
+      <button id="deleteAllBtn" class="danger-btn full-btn">সব অ্যাপ ডেটা মুছে ফেলো</button>
+    </section>
+
+    <section class="card developer-card">
+      <button id="developerBtn" class="developer-btn">✦ MASTERMIND ✦</button>
+      <p id="developerMessage" hidden>তোমার স্বপ্ন, তোমার পরিশ্রম, তোমার সাফল্য।</p>
+    </section>
+  </main>
+
+  <footer>
+    <p>Made for focused learning.</p>
+    <p>Developer: <strong>MASTERMIND</strong></p>
+  </footer>
+
+  <dialog id="appDialog">
+    <form method="dialog">
+      <h2 id="dialogTitle">অ্যাপ লক</h2>
+      <p id="dialogText"></p>
+      <input id="dialogInput" type="password" placeholder="পাসকোড" autocomplete="off">
+      <div class="button-row">
+        <button id="dialogCancel" class="secondary-btn" value="cancel">বাতিল</button>
+        <button id="dialogConfirm" class="primary-btn" value="confirm">ঠিক আছে</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="./app.js"></script>
+</body>
+</html>
