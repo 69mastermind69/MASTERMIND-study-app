@@ -1,0 +1,26 @@
+
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#172747"/>
+      <stop offset="100%" stop-color="#0b1120"/>
+    </linearGradient>
+    <linearGradient id="brain" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#53e5ff"/>
+      <stop offset="100%" stop-color="#9c76ff"/>
+    </linearGradient>
+  </defs>
+  <rect width="200" height="200" rx="42" fill="url(#bg)"/>
+  <path d="M100 151 48 164 Q44 165 44 159 V99 Q44 94 50 93 L96 103 Q100 104 100 109Z"
+        fill="#172e50" stroke="#54ddff" stroke-width="3"/>
+  <path d="M100 151 152 164 Q156 165 156 159 V99 Q156 94 150 93 L104 103 Q100 104 100 109Z"
+        fill="#202448" stroke="#9a80ff" stroke-width="3"/>
+  <path d="M54 105 87 112 M54 119 87 126 M54 133 87 140 M146 105 113 112 M146 119 113 126 M146 133 113 140"
+        fill="none" stroke="#8deaff" stroke-width="3" stroke-linecap="round"/>
+  <path d="M100 95 C88 95 82 86 84 76 C70 70 72 51 85 47 C87 33 105 31 111 43 C126 37 140 50 134 63 C146 73 137 91 123 91 C116 99 106 100 100 95Z"
+        fill="url(#brain)" stroke="#e0faff" stroke-width="2.5"/>
+  <path d="M101 43 V90 M84 53 Q98 52 91 69 M113 47 Q109 56 127 60 M82 74 Q91 72 94 88 M124 70 Q115 70 116 87"
+        fill="none" stroke="#172747" stroke-width="3.5" stroke-linecap="round"/>
+  <path d="M151 34 155 45 166 49 155 53 151 64 147 53 136 49 147 45Z"
+        fill="#fff2a6"/>
+</svg>
