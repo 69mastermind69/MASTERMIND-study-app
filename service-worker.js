@@ -1,7 +1,13 @@
 
 "use strict";
 
-const CACHE_NAME = "mastermind-study-v1";
+/*
+ * MASTERMIND Study App
+ * Updated service worker
+ * Cache version: v2
+ */
+
+const CACHE_NAME = "mastermind-study-v2";
 
 const APP_FILES = [
   "./",
@@ -11,7 +17,7 @@ const APP_FILES = [
   "./manifest.json"
 ];
 
-// Install: cache the core app files.
+/* Install the new cache */
 self.addEventListener("install", event => {
   event.waitUntil(
     caches.open(CACHE_NAME)
@@ -20,7 +26,7 @@ self.addEventListener("install", event => {
   );
 });
 
-// Activate: remove old versions of this app's cache.
+/* Activate new worker and remove old app caches */
 self.addEventListener("activate", event => {
   event.waitUntil(
     caches.keys()
@@ -36,61 +42,46 @@ self.addEventListener("activate", event => {
   );
 });
 
-// Fetch: use cached files when offline.
+/* Serve updated files from network, with offline fallback */
 self.addEventListener("fetch", event => {
   const request = event.request;
+
+  if (request.method !== "GET") return;
+
   const url = new URL(request.url);
 
-  // Handle only requests belonging to this app.
-  if (
-    request.method !== "GET" ||
-    url.origin !== self.location.origin
-  ) {
-    return;
-  }
+  if (url.origin !== self.location.origin) return;
 
-  // Navigation: prefer the latest page, fall back to cache.
-  if (request.mode === "navigate") {
-    event.respondWith(
-      fetch(request)
-        .then(response => {
-          if (response.ok) {
-            const copy = response.clone();
-            caches.open(CACHE_NAME).then(cache =>
-              cache.put("./index.html", copy)
-            );
-          }
-          return response;
-        })
-        .catch(async () => {
-          return (
-            await caches.match(request) ||
-            await caches.match("./index.html") ||
-            Response.error()
-          );
-        })
-    );
-    return;
-  }
+  event.respondWith((async () => {
+    const cache = await caches.open(CACHE_NAME);
 
-  // Static app files: use cache first.
-  event.respondWith(
-    caches.match(request).then(cached => {
+    try {
+      const response = await fetch(request);
+
+      if (response && response.ok && response.type === "basic") {
+        await cache.put(request, response.clone());
+      }
+
+      return response;
+    } catch (error) {
+      const cached = await cache.match(request);
+
       if (cached) return cached;
 
-      return fetch(request).then(response => {
-        if (
-          response.ok &&
-          response.type === "basic"
-        ) {
-          const copy = response.clone();
-          caches.open(CACHE_NAME).then(cache =>
-            cache.put(request, copy)
-          );
-        }
+      if (request.mode === "navigate") {
+        const home = await cache.match("./index.html");
+        if (home) return home;
+      }
 
-        return response;
-      });
-    })
-  );
+      return new Response(
+        "অফলাইন আছো। এই ফাইলটি আগে ক্যাশে সংরক্ষিত ছিল না।",
+        {
+          status: 503,
+          headers: {
+            "Content-Type": "text/plain; charset=utf-8"
+          }
+        }
+      );
+    }
+  })());
 });
